@@ -1,20 +1,17 @@
 import { Elysia } from "elysia";
 import { x402ResourceServer } from "@x402/core/server";
-import {
-  x402HTTPResourceServer,
-  type HTTPAdapter,
-} from "@x402/core/http";
+import { x402HTTPResourceServer, type HTTPAdapter } from "@x402/core/http";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
-import { UptoEvmServerScheme } from "./schemes/upto/evm/server.js";
+import { UptoEvmServerScheme } from "../src/schemes/upto/evm/server.js";
 import { createHash } from "node:crypto";
 import type { PaymentPayload } from "@x402/core/types";
 
-import { evmAccount, svmAccount } from "./signers.js";
-import { localFacilitatorClient } from "./localFacilitatorClient.js";
-import { uptoStore } from "./upto/index.js";
-import { settleUptoSession } from "./upto/settlement.js";
-import type { UptoSession } from "./upto/sessionStore.js";
+import { evmAccount, svmAccount } from "../src/signers.js";
+import { localFacilitatorClient } from "../src/localFacilitatorClient.js";
+import { uptoStore } from "../src/upto/index.js";
+import { settleUptoSession } from "../src/upto/settlement.js";
+import type { UptoSession } from "../src/upto/sessionStore.js";
 
 const resourceServer = new x402ResourceServer(localFacilitatorClient)
   .register("eip155:*", new ExactEvmScheme())
@@ -81,10 +78,7 @@ function getUptoSessionId(paymentPayload: PaymentPayload): string {
   return createHash("sha256").update(JSON.stringify(key)).digest("hex");
 }
 
-function createAdapter(ctx: {
-  request: Request;
-  body: unknown;
-}): HTTPAdapter {
+function createAdapter(ctx: { request: Request; body: unknown }): HTTPAdapter {
   const url = new URL(ctx.request.url);
   const queryParams: Record<string, string | string[]> = {};
 
@@ -175,8 +169,7 @@ export const paidApi = new Elysia({ prefix: "/api", name: "paidApi" })
           };
         }
 
-        const nextTotal =
-          existing.settledTotal + existing.pendingSpent + price;
+        const nextTotal = existing.settledTotal + existing.pendingSpent + price;
 
         if (nextTotal > existing.cap) {
           ctx.set.status = 402;
@@ -255,9 +248,11 @@ export const paidApi = new Elysia({ prefix: "/api", name: "paidApi" })
       true
     );
 
-    return uptoStore.get(sessionId)?.lastSettlement?.receipt ?? {
-      success: true,
-      transaction: "",
-      network: session.paymentPayload.accepted.network,
-    };
+    return (
+      uptoStore.get(sessionId)?.lastSettlement?.receipt ?? {
+        success: true,
+        transaction: "",
+        network: session.paymentPayload.accepted.network,
+      }
+    );
   });
