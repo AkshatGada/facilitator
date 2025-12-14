@@ -1,6 +1,10 @@
 import { Elysia } from "elysia";
 import { x402ResourceServer } from "@x402/core/server";
-import { x402HTTPResourceServer, type HTTPAdapter } from "@x402/core/http";
+import {
+  HTTPFacilitatorClient,
+  x402HTTPResourceServer,
+  type HTTPAdapter,
+} from "@x402/core/http";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { UptoEvmServerScheme } from "../src/schemes/upto/evm/server.js";
@@ -8,13 +12,19 @@ import { createHash } from "node:crypto";
 import type { PaymentPayload } from "@x402/core/types";
 
 import { evmAccount, svmAccount } from "../src/signers.js";
-import { localFacilitatorClient } from "../src/localFacilitatorClient.js";
-import { uptoStore } from "../src/upto/index.js";
 import { settleUptoSession } from "../src/upto/settlement.js";
-import type { UptoSession } from "../src/upto/sessionStore.js";
+import { InMemoryUptoSessionStore, type UptoSession } from "../src/upto/sessionStore.js";
 import node from "@elysiajs/node";
 
-const resourceServer = new x402ResourceServer(localFacilitatorClient)
+const FACILITATOR_URL =
+  process.env.FACILITATOR_URL ??
+  `http://localhost:${process.env.FACILITATOR_PORT ?? process.env.PORT ?? "4022"}`;
+
+const facilitatorClient = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
+
+const uptoStore = new InMemoryUptoSessionStore();
+
+const resourceServer = new x402ResourceServer(facilitatorClient)
   .register("eip155:*", new ExactEvmScheme())
   .register("eip155:*", new UptoEvmServerScheme())
   .register("solana:*", new ExactSvmScheme());
@@ -254,7 +264,7 @@ export const app = new Elysia({
 
     await settleUptoSession(
       uptoStore,
-      localFacilitatorClient,
+      facilitatorClient,
       sessionId,
       "manual_close",
       true
@@ -270,4 +280,4 @@ export const app = new Elysia({
   });
 
 app.listen(4022);
-console.log("Facilitator listening");
+console.log(`Paid API listening on http://localhost:4022 (facilitator: ${FACILITATOR_URL})`);

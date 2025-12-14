@@ -21,7 +21,8 @@ and fill required environment variables:
 
 - `EVM_PRIVATE_KEY` - Ethereum private key
 - `SVM_PRIVATE_KEY` - Solana private key
-- `PORT` - Server port (optional, defaults to 4022)
+- `PORT` - facilitator server port (optional, defaults to 4022). If you also run `examples/paidApi.ts` on 4022, set this to something else (e.g. 8090).
+- `FACILITATOR_URL` (optional) - override the facilitator URL used by `examples/paidApi.ts` (defaults to `http://localhost:$PORT`)
 
 2. Install and build all packages from the typescript examples root:
 
@@ -40,6 +41,20 @@ pnpm dev
 ### Smoke test client (upto)
 
 This repo includes a tiny client under `examples/smokeClient.ts` to hit the demo upto endpoint and settle a batch.
+
+Start the services in two terminals:
+
+1. Facilitator:
+
+```bash
+pnpm dev
+```
+
+2. Paid API:
+
+```bash
+pnpm smoke:api
+```
 
 1. Export a funded EOA private key for the payer:
 
