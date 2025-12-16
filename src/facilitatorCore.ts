@@ -28,13 +28,13 @@ export const facilitator = new x402Facilitator()
 // Register EVM and SVM schemes (v2 exact + v2 upto + v2 exact solana)
 registerExactEvmScheme(facilitator, {
   signer: evmSigner,
-  networks: "eip155:8453", // Base mainnet
+  networks: ["eip155:8453", "eip155:84532"], // Base mainnet and Base Sepolia
   deployERC4337WithEIP6492: true,
 });
 
 registerUptoEvmScheme(facilitator, {
   signer: evmSigner,
-  networks: "eip155:8453", // Base mainnet
+  networks: ["eip155:8453", "eip155:84532"], // Base mainnet and Base Sepolia
 });
 
 registerExactSvmScheme(facilitator, {
