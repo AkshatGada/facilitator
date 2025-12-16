@@ -1,5 +1,5 @@
 import { Elysia } from "elysia";
-import type { UptoSessionStore } from "./sessionStore.js";
+import type { UptoSessionStore } from "./store.js";
 import { settleUptoSession, type UptoFacilitatorClient } from "./settlement.js";
 
 export interface UptoSweeperConfig {
@@ -59,7 +59,10 @@ export function createUptoSweeper(config: UptoSweeperConfig) {
           continue;
         }
 
-        if (totalOutstanding * capThresholdDen >= session.cap * capThresholdNum) {
+        if (
+          totalOutstanding * capThresholdDen >=
+          session.cap * capThresholdNum
+        ) {
           void settleUptoSession(
             config.store,
             config.facilitatorClient,
@@ -103,4 +106,3 @@ export function createUptoSweeper(config: UptoSweeperConfig) {
       if (interval) clearInterval(interval);
     });
 }
-

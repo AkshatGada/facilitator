@@ -3,7 +3,7 @@ import { registerExactEvmScheme } from "@x402/evm/exact/facilitator";
 import { registerExactSvmScheme } from "@x402/svm/exact/facilitator";
 
 import { evmSigner, svmSigner } from "./signers.js";
-import { registerUptoEvmScheme } from "./schemes/upto/evm/registerFacilitator.js";
+import { registerUptoEvmScheme } from "./upto/evm/register.js";
 
 export const facilitator = new x402Facilitator()
   .onBeforeVerify(async (context) => {

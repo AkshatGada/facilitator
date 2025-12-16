@@ -7,13 +7,16 @@ import {
 } from "@x402/core/http";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
-import { UptoEvmServerScheme } from "../src/schemes/upto/evm/server.js";
+import { UptoEvmServerScheme } from "../src/upto/evm/serverScheme.js";
 import { createHash } from "node:crypto";
 import type { PaymentPayload } from "@x402/core/types";
 
 import { evmAccount, svmAccount } from "../src/signers.js";
 import { settleUptoSession } from "../src/upto/settlement.js";
-import { InMemoryUptoSessionStore, type UptoSession } from "../src/upto/sessionStore.js";
+import {
+  InMemoryUptoSessionStore,
+  type UptoSession,
+} from "../src/upto/store.js";
 import { node } from "@elysiajs/node";
 
 const FACILITATOR_URL =
@@ -280,4 +283,6 @@ export const app = new Elysia({
   });
 
 app.listen(4022);
-console.log(`Paid API listening on http://localhost:4022 (facilitator: ${FACILITATOR_URL})`);
+console.log(
+  `Paid API listening on http://localhost:4022 (facilitator: ${FACILITATOR_URL})`
+);

@@ -3,7 +3,7 @@ import type {
   PaymentRequirements,
   SettleResponse,
 } from "@x402/core/types";
-import type { UptoSessionStore } from "./sessionStore.js";
+import type { UptoSessionStore } from "./store.js";
 
 export type UptoFacilitatorClient = {
   settle: (
