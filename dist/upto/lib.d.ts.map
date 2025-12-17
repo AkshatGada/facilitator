@@ -1,1 +1,0 @@
-{"version":3,"file":"lib.d.ts","sourceRoot":"","sources":["../../src/upto/lib.ts"],"names":[],"mappings":"AAAA;;;;;;;;;;;;;;;;;GAiBG;AAGH,OAAO,EACL,wBAAwB,EACxB,KAAK,gBAAgB,EACrB,KAAK,WAAW,EAChB,KAAK,iBAAiB,GACvB,MAAM,YAAY,CAAC;AAGpB,OAAO,EACL,iBAAiB,EACjB,KAAK,qBAAqB,GAC3B,MAAM,iBAAiB,CAAC;AAGzB,OAAO,EACL,iBAAiB,EACjB,KAAK,iBAAiB,GACvB,MAAM,cAAc,CAAC"}
