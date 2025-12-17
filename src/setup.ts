@@ -36,7 +36,11 @@ async function createDefaultSigners(): Promise<{
   if (USE_CDP) {
     // CDP Signer (preferred)
     const cdp = new CdpClient();
-    const account = await cdp.evm.getOrCreateAccount({ name: "facilitator" });
+
+    const account = await cdp.evm.getOrCreateAccount({
+      name: process.env.CDP_ACCOUNT_NAME!,
+    });
+
     console.info(`CDP Facilitator account: ${account.address}`);
 
     const evmSigners: EvmSignerConfig[] = [];
@@ -74,7 +78,8 @@ async function createDefaultSigners(): Promise<{
   } else {
     // Private Key Signer (fallback)
     // Create separate signers for each network to ensure correct RPC/chain configuration
-    const { baseSigner, baseSepoliaSigner, svmSigner } = await import("./signers/index.js");
+    const { baseSigner, baseSepoliaSigner, svmSigner } =
+      await import("./signers/index.js");
 
     return {
       evmSigners: [
