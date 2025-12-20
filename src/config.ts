@@ -164,7 +164,8 @@ export function getSvmNetworkSetups(): SvmNetworkSetup[] {
 export const USE_CDP = !!(
   CDP_API_KEY_ID &&
   CDP_API_KEY_SECRET &&
-  CDP_WALLET_SECRET
+  CDP_WALLET_SECRET &&
+  CDP_ACCOUNT_NAME
 );
 export const USE_PRIVATE_KEY = !!EVM_PRIVATE_KEY;
 
@@ -174,7 +175,7 @@ export const USE_PRIVATE_KEY = !!EVM_PRIVATE_KEY;
 
 if (!USE_CDP && !USE_PRIVATE_KEY) {
   console.error("❌ Missing signer configuration. Provide either:");
-  console.error("   CDP: CDP_API_KEY_ID, CDP_API_KEY_SECRET, CDP_WALLET_SECRET");
+  console.error("   CDP: CDP_API_KEY_ID, CDP_API_KEY_SECRET, CDP_WALLET_SECRET, CDP_ACCOUNT_NAME");
   console.error("   Or private key: EVM_PRIVATE_KEY");
   process.exit(1);
 }

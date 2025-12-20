@@ -171,7 +171,7 @@ curl http://localhost:8090/supported
 | `CDP_API_KEY_ID`     | Yes      | -       | CDP API key ID     |
 | `CDP_API_KEY_SECRET` | Yes      | -       | CDP API key secret |
 | `CDP_WALLET_SECRET`  | Yes      | -       | CDP wallet secret  |
-| `CDP_ACCOUNT_NAME`   | No       | -       | CDP account name   |
+| `CDP_ACCOUNT_NAME`   | Yes      | -       | CDP account name   |
 
 **Private Key Signer (Fallback)**
 
