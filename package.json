@@ -33,6 +33,7 @@
   },
   "files": [
     "dist",
+    "public",
     "README.md",
     "LICENSE"
   ],
@@ -77,6 +78,7 @@
     "node": ">=22"
   },
   "dependencies": {
+    "@elysiajs/static": "^1.4.7",
     "@x402/core": "2.0.0",
     "@x402/evm": "2.0.0",
     "@x402/hono": "^2.0.0",

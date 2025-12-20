@@ -4,6 +4,7 @@
     "": {
       "name": "@x402/core-facilitator-typescript",
       "dependencies": {
+        "@elysiajs/static": "^1.4.7",
         "@x402/core": "2.0.0",
         "@x402/evm": "2.0.0",
         "@x402/hono": "^2.0.0",
@@ -62,6 +63,8 @@
     "@elysiajs/node": ["@elysiajs/node@1.4.2", "", { "dependencies": { "crossws": "^0.4.1", "srvx": "^0.9.4" }, "peerDependencies": { "elysia": ">= 1.4.0" } }, "sha512-zqeBAV4/faCcmIEjCp3g6jRwsbaWsd5HqmlEf3CirD9HkTWQNo4T+GN/qGZi7zgd84D3Kzxsny7ZTMXEfrDSXQ=="],
 
     "@elysiajs/opentelemetry": ["@elysiajs/opentelemetry@1.4.9", "", { "dependencies": { "@opentelemetry/api": "^1.9.0", "@opentelemetry/instrumentation": "^0.200.0", "@opentelemetry/sdk-node": "^0.200.0" }, "peerDependencies": { "elysia": ">= 1.4.0" } }, "sha512-Pb/q45K3cm6W6Pc4GrY7bRr519EypSztBhfFDdldCkIvhrnbRXwSlK54f16FCYMwzdbTw1jTsCHKS2VbTyLsMQ=="],
+
+    "@elysiajs/static": ["@elysiajs/static@1.4.7", "", { "peerDependencies": { "elysia": ">= 1.4.0" } }, "sha512-Go4kIXZ0G3iWfkAld07HmLglqIDMVXdyRKBQK/sVEjtpDdjHNb+rUIje73aDTWpZYg4PEVHUpi9v4AlNEwrQug=="],
 
     "@es-joy/jsdoccomment": ["@es-joy/jsdoccomment@0.50.2", "", { "dependencies": { "@types/estree": "^1.0.6", "@typescript-eslint/types": "^8.11.0", "comment-parser": "1.4.1", "esquery": "^1.6.0", "jsdoc-type-pratt-parser": "~4.1.0" } }, "sha512-YAdE/IJSpwbOTiaURNCKECdAwqrJuFiZhylmesBcIRawtYKnBR2wxPhoIewMg+Yu+QuYvHfJNReWpoxGBKOChA=="],
 

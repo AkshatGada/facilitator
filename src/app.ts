@@ -1,5 +1,6 @@
-import { Elysia } from "elysia";
+import { Elysia, file } from "elysia";
 import { node } from "@elysiajs/node";
+import { staticPlugin } from "@elysiajs/static";
 import { opentelemetry } from "@elysiajs/opentelemetry";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto";
@@ -28,6 +29,8 @@ export const app = new Elysia({ adapter: node() })
       spanProcessors: [new BatchSpanProcessor(new OTLPTraceExporter())],
     })
   )
+  .get("/", () => file("./public/index.html"))
+  .use(staticPlugin())
   /**
    * POST /verify
    * Verify a payment against requirements
