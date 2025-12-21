@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import { x402Facilitator } from "@x402/core/facilitator";
+import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
 
 import {
   getStarknetNetwork,
@@ -8,6 +9,13 @@ import {
   validateStarknetNetworks,
 } from "../../src/networks.js";
 import { ExactStarknetScheme } from "../../src/starknet/exact/facilitator.js";
+
+const baseStarknetConfig = {
+  network: "starknet:mainnet",
+  rpcUrl: "https://starknet-mainnet.example.com",
+  paymasterEndpoint: "https://starknet.paymaster.avnu.fi",
+  sponsorAddress: "0xabc123",
+} as const;
 
 describe("Starknet network registry", () => {
   it("returns Starknet CAIP identifiers", () => {
@@ -50,26 +58,63 @@ describe("Starknet network registry", () => {
 
 describe("ExactStarknetScheme supported metadata", () => {
   it("exposes paymaster and sponsor signer data in /supported", () => {
-    const config = {
-      network: "starknet:mainnet",
-      rpcUrl: "https://starknet-mainnet.example.com",
-      paymasterEndpoint: "https://starknet.paymaster.avnu.fi",
-      sponsorAddress: "0xabc123",
-    } as const;
-
     const facilitator = new x402Facilitator();
-    facilitator.register(config.network, new ExactStarknetScheme(config));
+    facilitator.register(
+      baseStarknetConfig.network,
+      new ExactStarknetScheme(baseStarknetConfig)
+    );
 
     const supported = facilitator.getSupported();
     const kind = supported.kinds.find(
-      (entry) => entry.network === config.network && entry.scheme === "exact"
+      (entry) =>
+        entry.network === baseStarknetConfig.network &&
+        entry.scheme === "exact"
     );
 
     expect(kind).toBeDefined();
     expect(kind?.extra).toEqual({
-      paymasterEndpoint: config.paymasterEndpoint,
-      sponsorAddress: config.sponsorAddress,
+      paymasterEndpoint: baseStarknetConfig.paymasterEndpoint,
+      sponsorAddress: baseStarknetConfig.sponsorAddress,
     });
-    expect(supported.signers["starknet:*"]).toEqual([config.sponsorAddress]);
+    expect(supported.signers["starknet:*"]).toEqual([
+      baseStarknetConfig.sponsorAddress,
+    ]);
+  });
+});
+
+describe("ExactStarknetScheme typedData requirement", () => {
+  const scheme = new ExactStarknetScheme(baseStarknetConfig);
+
+  const requirements: PaymentRequirements = {
+    scheme: "exact",
+    network: "starknet:mainnet",
+    asset: "0xasset",
+    amount: "1",
+    payTo: "0xpayto",
+    maxTimeoutSeconds: 60,
+    extra: {},
+  };
+
+  const payload: PaymentPayload = {
+    x402Version: 2,
+    resource: {
+      url: "https://example.com",
+      description: "Example resource",
+      mimeType: "application/json",
+    },
+    accepted: requirements,
+    payload: {},
+  };
+
+  it("rejects verify when typedData is missing", async () => {
+    const result = await scheme.verify(payload, requirements);
+    expect(result.isValid).toBe(false);
+    expect(result.invalidReason).toBe("invalid_payload");
+  });
+
+  it("rejects settle when typedData is missing", async () => {
+    const result = await scheme.settle(payload, requirements);
+    expect(result.success).toBe(false);
+    expect(result.errorReason).toBe("invalid_payload");
   });
 });

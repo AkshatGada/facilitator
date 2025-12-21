@@ -30,8 +30,21 @@ export interface StarknetConfig {
   paymasterEndpoint: string;
   /** Optional paymaster API key */
   paymasterApiKey?: string;
-  /** Optional sponsor address for /supported signers */
-  sponsorAddress?: string;
+  /** Sponsor address for /supported signers */
+  sponsorAddress: string;
+}
+
+type PaymentPayloadWithTypedData = PaymentPayload & {
+  typedData: Record<string, unknown>;
+};
+
+function hasTypedData(
+  payload: PaymentPayload
+): payload is PaymentPayloadWithTypedData {
+  const typedData = (payload as { typedData?: unknown }).typedData;
+  return (
+    typeof typedData === "object" && typedData !== null && !Array.isArray(typedData)
+  );
 }
 
 export class ExactStarknetScheme implements SchemeNetworkFacilitator {
@@ -41,6 +54,9 @@ export class ExactStarknetScheme implements SchemeNetworkFacilitator {
   private readonly provider: ReturnType<typeof createProvider>;
 
   constructor(private readonly config: StarknetConfig) {
+    if (!config.sponsorAddress) {
+      throw new Error("Starknet sponsor address is required.");
+    }
     this.provider = createProvider({
       network: config.network,
       rpcUrl: config.rpcUrl,
@@ -50,20 +66,21 @@ export class ExactStarknetScheme implements SchemeNetworkFacilitator {
   getExtra(_network: string): Record<string, unknown> | undefined {
     return {
       paymasterEndpoint: this.config.paymasterEndpoint,
-      ...(this.config.sponsorAddress
-        ? { sponsorAddress: this.config.sponsorAddress }
-        : {}),
+      sponsorAddress: this.config.sponsorAddress,
     };
   }
 
   getSigners(_network: string): string[] {
-    return this.config.sponsorAddress ? [this.config.sponsorAddress] : [];
+    return [this.config.sponsorAddress];
   }
 
   async verify(
     payload: PaymentPayload,
     requirements: PaymentRequirements
   ): Promise<VerifyResponse> {
+    if (!hasTypedData(payload)) {
+      return { isValid: false, invalidReason: "invalid_payload" };
+    }
     return verifyPayment(
       this.provider,
       payload as StarknetPaymentPayload,
@@ -75,6 +92,14 @@ export class ExactStarknetScheme implements SchemeNetworkFacilitator {
     payload: PaymentPayload,
     requirements: PaymentRequirements
   ): Promise<SettleResponse> {
+    if (!hasTypedData(payload)) {
+      return {
+        success: false,
+        errorReason: "invalid_payload",
+        transaction: "",
+        network: requirements.network,
+      };
+    }
     return settlePayment(
       this.provider,
       payload as StarknetPaymentPayload,

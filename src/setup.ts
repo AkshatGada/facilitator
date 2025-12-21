@@ -53,10 +53,6 @@ async function createDefaultSigners(): Promise<{
       console.warn(`⚠️  No paymaster endpoint for ${network.name} - skipping`);
       continue;
     }
-    if (!network.sponsorAddress) {
-      console.warn(`⚠️  No sponsor address for ${network.name} - skipping`);
-      continue;
-    }
 
     starknetConfigs.push({
       network: network.caip as StarknetConfig["network"],

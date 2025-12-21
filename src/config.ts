@@ -189,6 +189,19 @@ function getStarknetSponsorAddress(network: string): string | undefined {
   return process.env[envKey] ?? STARKNET_SPONSOR_ADDRESS;
 }
 
+function requireStarknetSponsorAddress(network: string): string {
+  const envKey = `STARKNET_SPONSOR_ADDRESS_${network
+    .toUpperCase()
+    .replace(/-/g, "_")}`;
+  const sponsorAddress = getStarknetSponsorAddress(network);
+  if (!sponsorAddress) {
+    throw new Error(
+      `Missing Starknet sponsor address for ${network}. Set ${envKey} or STARKNET_SPONSOR_ADDRESS.`
+    );
+  }
+  return sponsorAddress;
+}
+
 /**
  * Get Starknet network configuration for setup
  */
@@ -198,7 +211,7 @@ export interface StarknetNetworkSetup {
   rpcUrl: string | undefined;
   paymasterEndpoint: string | undefined;
   paymasterApiKey?: string;
-  sponsorAddress?: string;
+  sponsorAddress: string;
 }
 
 export function getStarknetNetworkSetups(): StarknetNetworkSetup[] {
@@ -208,7 +221,7 @@ export function getStarknetNetworkSetups(): StarknetNetworkSetup[] {
     rpcUrl: getStarknetRpcUrl(name),
     paymasterEndpoint: getStarknetPaymasterEndpoint(name),
     paymasterApiKey: getStarknetPaymasterApiKey(name),
-    sponsorAddress: getStarknetSponsorAddress(name),
+    sponsorAddress: requireStarknetSponsorAddress(name),
   }));
 }
 
