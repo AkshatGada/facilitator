@@ -39,7 +39,10 @@ export {
 
 export {
   createPaidRoutes,
+  createHonoPaidRoutes,
   type PaidRoutes,
   type PaidRoutesOptions,
   type PaidRouteOptions,
+  type HonoPaidRoutes,
+  type HonoPaidRoutesOptions,
 } from "./paidRoutes.js";

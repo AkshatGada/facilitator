@@ -1,5 +1,10 @@
-import type { Router, RequestHandler } from "express";
+import type { Router, RequestHandler, Application } from "express";
 import type { RouteConfig, RoutesConfig } from "@x402/core/http";
+import type { x402ResourceServer, FacilitatorClient } from "@x402/core/server";
+import {
+  createExpressPaymentMiddleware,
+  type ExpressPaymentMiddlewareConfig,
+} from "./middleware.js";
 
 type HttpMethod =
   | "get"
@@ -42,6 +47,59 @@ export interface PaidRoutes {
   };
 }
 
+export interface ExpressPaidRoutesOptions extends PaidRoutesOptions {
+  middleware: Omit<ExpressPaymentMiddlewareConfig, "routes" | "httpServer"> &
+    (
+      | { resourceServer: x402ResourceServer }
+      | { facilitatorClient: FacilitatorClient }
+    );
+}
+
+export interface ExpressPaidRoutes {
+  app: Application | Router;
+  routes: RoutesConfig;
+  get(
+    path: string,
+    handler: RequestHandler,
+    options?: PaidRouteOptions
+  ): ExpressPaidRoutes;
+  post(
+    path: string,
+    handler: RequestHandler,
+    options?: PaidRouteOptions
+  ): ExpressPaidRoutes;
+  put(
+    path: string,
+    handler: RequestHandler,
+    options?: PaidRouteOptions
+  ): ExpressPaidRoutes;
+  patch(
+    path: string,
+    handler: RequestHandler,
+    options?: PaidRouteOptions
+  ): ExpressPaidRoutes;
+  delete(
+    path: string,
+    handler: RequestHandler,
+    options?: PaidRouteOptions
+  ): ExpressPaidRoutes;
+  options(
+    path: string,
+    handler: RequestHandler,
+    options?: PaidRouteOptions
+  ): ExpressPaidRoutes;
+  head(
+    path: string,
+    handler: RequestHandler,
+    options?: PaidRouteOptions
+  ): ExpressPaidRoutes;
+  all(
+    path: string,
+    handler: RequestHandler,
+    options?: PaidRouteOptions
+  ): ExpressPaidRoutes;
+}
+
 interface RouteDefinition {
   method: HttpMethod;
   path: string;
@@ -76,6 +134,25 @@ function toX402RoutePattern(path: string): string {
   return path.replace(/:([A-Za-z0-9_]+)/g, "[$1]");
 }
 
+function registerPaymentConfig(
+  basePath: string,
+  routes: Record<string, RouteConfig>,
+  method: HttpMethod,
+  path: string,
+  payment?: RouteConfig
+): void {
+  if (payment) {
+    const fullPath = joinPaths(basePath, path);
+    const routeKey = `${method.toUpperCase()} ${toX402RoutePattern(fullPath)}`;
+
+    if (routes[routeKey]) {
+      throw new Error(`Duplicate payment config for ${routeKey}`);
+    }
+
+    routes[routeKey] = payment;
+  }
+}
+
 export function createPaidRoutes(options: PaidRoutesOptions = {}): PaidRoutes {
   const basePath = normalizeBasePath(options.basePath);
   const routes: Record<string, RouteConfig> = {};
@@ -87,17 +164,7 @@ export function createPaidRoutes(options: PaidRoutesOptions = {}): PaidRoutes {
     handlers: RequestHandler[],
     payment?: RouteConfig
   ): PaidRoutes => {
-    if (payment) {
-      const fullPath = joinPaths(basePath, path);
-      const routeKey = `${method.toUpperCase()} ${toX402RoutePattern(fullPath)}`;
-
-      if (routes[routeKey]) {
-        throw new Error(`Duplicate payment config for ${routeKey}`);
-      }
-
-      routes[routeKey] = payment;
-    }
-
+    registerPaymentConfig(basePath, routes, method, path, payment);
     definitions.push({ method, path, handlers });
     return api;
   };
@@ -144,6 +211,65 @@ export function createPaidRoutes(options: PaidRoutesOptions = {}): PaidRoutes {
     apply,
     ...createMethodRegistrar(),
     withPayment: (payment: RouteConfig) => createMethodRegistrar(payment),
+  };
+
+  return api;
+}
+
+export function createExpressPaidRoutes(
+  app: Application | Router,
+  options: ExpressPaidRoutesOptions
+): ExpressPaidRoutes {
+  const basePath = normalizeBasePath(options.basePath);
+  const routes: Record<string, RouteConfig> = {};
+
+  // Track if middleware has been applied
+  let middlewareApplied = false;
+
+  const applyMiddleware = () => {
+    if (middlewareApplied) return;
+    middlewareApplied = true;
+
+    const middlewareConfig: ExpressPaymentMiddlewareConfig = {
+      ...options.middleware,
+      routes,
+    };
+
+    app.use(createExpressPaymentMiddleware(middlewareConfig));
+  };
+
+  const register = (
+    method: HttpMethod,
+    path: string,
+    handler: RequestHandler,
+    opts?: PaidRouteOptions
+  ): ExpressPaidRoutes => {
+    registerPaymentConfig(basePath, routes, method, path, opts?.payment);
+
+    // Apply middleware before first route registration
+    applyMiddleware();
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const registrar = (app as any)[method];
+    if (!registrar) {
+      throw new Error(`Express app missing method '${method}' for ${path}`);
+    }
+
+    registrar.call(app, path, handler);
+    return api;
+  };
+
+  const api: ExpressPaidRoutes = {
+    app,
+    routes,
+    get: (path, handler, opts) => register("get", path, handler, opts),
+    post: (path, handler, opts) => register("post", path, handler, opts),
+    put: (path, handler, opts) => register("put", path, handler, opts),
+    patch: (path, handler, opts) => register("patch", path, handler, opts),
+    delete: (path, handler, opts) => register("delete", path, handler, opts),
+    options: (path, handler, opts) => register("options", path, handler, opts),
+    head: (path, handler, opts) => register("head", path, handler, opts),
+    all: (path, handler, opts) => register("all", path, handler, opts),
   };
 
   return api;

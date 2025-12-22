@@ -1,44 +1,34 @@
 import type { Context, MiddlewareHandler } from "hono";
+import type { HTTPAdapter } from "@x402/core/http";
+
 import {
-  x402HTTPResourceServer,
-  type HTTPAdapter,
-  type HTTPProcessResult,
+  type PaymentState,
+  type BasePaymentMiddlewareConfig,
   type PaywallConfig,
-  type PaywallProvider,
-  type RoutesConfig,
-} from "@x402/core/http";
-import type { x402ResourceServer, FacilitatorClient } from "@x402/core/server";
+  DEFAULT_PAYMENT_HEADER_ALIASES,
+  isUptoModule,
+  normalizePathCandidate,
+  resolveUrl,
+  parseQueryParams,
+  resolveHeaderWithAliases,
+  resolveHttpServer,
+  resolvePaywallConfig,
+  processBeforeHandle,
+  processAfterHandle,
+  x402HTTPResourceServer,
+} from "../middleware/core.js";
 
-import {
-  trackUptoPayment,
-  TRACKING_ERROR_MESSAGES,
-  TRACKING_ERROR_STATUS,
-  type TrackingResult,
-  type UptoModule,
-} from "../upto/lib.js";
-import { createResourceServer, type ResourceServerConfig } from "../server.js";
+// -----------------------------------------------------------------------------
+// Types
+// -----------------------------------------------------------------------------
 
-export interface HonoPaymentState {
-  result: HTTPProcessResult;
-  tracking?: TrackingResult;
-}
+export interface HonoPaymentState extends PaymentState {}
 
-export interface HonoPaymentMiddlewareConfig {
-  httpServer?: x402HTTPResourceServer;
-  resourceServer?: x402ResourceServer;
-  facilitatorClient?: FacilitatorClient;
-  routes?: RoutesConfig;
-  serverConfig?: ResourceServerConfig;
+export interface HonoPaymentMiddlewareConfig extends BasePaymentMiddlewareConfig {
   paywallConfig?:
     | PaywallConfig
     | ((ctx: { request: Request }) => PaywallConfig | Promise<PaywallConfig>);
-  paywallProvider?: PaywallProvider;
-  paymentHeaderAliases?: Array<string>;
-  autoSettle?: boolean;
-  upto?: UptoModule;
 }
-
-const DEFAULT_PAYMENT_HEADER_ALIASES = ["x-payment"];
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -46,63 +36,29 @@ declare module "hono" {
   }
 }
 
-function isUptoModule(value: unknown): value is UptoModule {
-  return (
-    !!value &&
-    typeof value === "object" &&
-    typeof (value as UptoModule).createSweeper === "function" &&
-    typeof (value as UptoModule).settleSession === "function"
-  );
-}
-
-function normalizePathCandidate(value: string): string {
-  return value.startsWith("/") ? value : `/${value}`;
-}
-
-function resolveUrl(request: Request): URL {
-  if (request.url.startsWith("http://") || request.url.startsWith("https://")) {
-    return new URL(request.url);
-  }
-  return new URL(request.url, "http://localhost");
-}
+// -----------------------------------------------------------------------------
+// Hono-specific Utilities
+// -----------------------------------------------------------------------------
 
 function createAdapter(
   c: Context,
-  paymentHeaderAliases: Array<string>
+  paymentHeaderAliases: string[]
 ): HTTPAdapter {
   const request = c.req.raw;
-  const url = resolveUrl(request);
+  const url = resolveUrl(request.url);
   const adapterPath = c.req.path || url.pathname;
-  const queryParams: Record<string, string | string[]> = {};
-
-  for (const [key, value] of url.searchParams.entries()) {
-    const existing = queryParams[key];
-    if (existing === undefined) {
-      queryParams[key] = value;
-    } else if (Array.isArray(existing)) {
-      existing.push(value);
-    } else {
-      queryParams[key] = [existing, value];
-    }
-  }
+  const queryParams = parseQueryParams(url);
 
   let cachedBody: unknown = undefined;
   let bodyParsed = false;
 
   return {
-    getHeader: (name) => {
-      const direct = request.headers.get(name);
-      if (direct !== null) return direct;
-
-      if (name.toLowerCase() === "payment-signature") {
-        for (const alias of paymentHeaderAliases) {
-          const aliasValue = request.headers.get(alias);
-          if (aliasValue !== null) return aliasValue;
-        }
-      }
-
-      return undefined;
-    },
+    getHeader: (name) =>
+      resolveHeaderWithAliases(
+        (n) => request.headers.get(n),
+        name,
+        paymentHeaderAliases
+      ),
     getMethod: () => request.method,
     getPath: () => normalizePathCandidate(adapterPath),
     getUrl: () => request.url,
@@ -124,55 +80,23 @@ function createAdapter(
   };
 }
 
-async function resolvePaywallConfig(
-  source:
-    | PaywallConfig
-    | ((ctx: { request: Request }) => PaywallConfig | Promise<PaywallConfig>)
-    | undefined,
-  ctx: { request: Request }
-): Promise<PaywallConfig | undefined> {
-  if (!source) return undefined;
-  if (typeof source === "function") {
-    return source(ctx);
-  }
-  return source;
-}
-
-function resolveHttpServer(
-  config: HonoPaymentMiddlewareConfig
-): x402HTTPResourceServer {
-  if (config.httpServer) return config.httpServer;
-
-  if (!config.routes) {
-    throw new Error("Hono payment middleware requires routes.");
-  }
-
-  const resourceServer =
-    config.resourceServer ??
-    (config.facilitatorClient
-      ? createResourceServer(config.facilitatorClient, config.serverConfig)
-      : undefined);
-
-  if (!resourceServer) {
-    throw new Error(
-      "Hono payment middleware requires a resourceServer or facilitatorClient."
-    );
-  }
-
-  return new x402HTTPResourceServer(resourceServer, config.routes);
-}
+// -----------------------------------------------------------------------------
+// Middleware Factory
+// -----------------------------------------------------------------------------
 
 export function createHonoPaymentMiddleware(
   config: HonoPaymentMiddlewareConfig
 ): MiddlewareHandler {
-  const httpServer = resolveHttpServer(config);
+  const httpServer = resolveHttpServer(config, "Hono");
   const paymentHeaderAliases =
     config.paymentHeaderAliases ?? DEFAULT_PAYMENT_HEADER_ALIASES;
   const autoSettle = config.autoSettle ?? true;
   const uptoModule = config.upto;
+
   if (config.upto !== undefined && !isUptoModule(config.upto)) {
     throw new Error("Upto middleware requires an upto module.");
   }
+
   const autoTrack = Boolean(uptoModule?.autoTrack);
 
   if (config.paywallProvider) {
@@ -193,98 +117,62 @@ export function createHonoPaymentMiddleware(
     const paywallConfig = await resolvePaywallConfig(config.paywallConfig, {
       request: c.req.raw,
     });
-    const path = adapter.getPath();
 
-    const result = await httpServer.processHTTPRequest(
-      {
-        adapter,
-        path,
-        method: adapter.getMethod(),
-      },
-      paywallConfig
-    );
+    const result = await processBeforeHandle({
+      httpServer,
+      adapter,
+      paywallConfig,
+      uptoModule,
+      autoTrack,
+    });
 
-    let state: HonoPaymentState = { result };
-    c.set("x402", state);
+    c.set("x402", result.state);
 
-    if (result.type === "payment-error") {
+    if (result.action === "error") {
       const headers = new Headers();
-      for (const [key, value] of Object.entries(result.response.headers)) {
-        headers.set(key, String(value));
+      for (const [key, value] of Object.entries(result.headers)) {
+        headers.set(key, value);
       }
-      return c.json(result.response.body, {
-        status: result.response.status as 402,
+      return c.json(result.body, {
+        status: result.status as 402,
         headers,
       });
     }
 
-    if (
-      result.type === "payment-verified" &&
-      result.paymentRequirements.scheme === "upto"
-    ) {
-      if (!uptoModule) {
-        throw new Error("Upto middleware requires an upto module.");
-      }
-      if (autoTrack) {
-        const tracking = trackUptoPayment(
-          uptoModule.store,
-          result.paymentPayload,
-          result.paymentRequirements
-        );
-
-        state = { result, tracking };
-        c.set("x402", state);
-
-        if (!tracking.success) {
-          return c.json(
-            {
-              error: tracking.error,
-              message: TRACKING_ERROR_MESSAGES[tracking.error],
-              sessionId: tracking.sessionId,
-            },
-            { status: TRACKING_ERROR_STATUS[tracking.error] as 400 }
-          );
-        }
-      }
+    if (result.action === "tracking-error") {
+      return c.json(result.body, {
+        status: result.status as 400,
+      });
     }
 
     await next();
 
-    const finalState = c.get("x402");
-    if (!finalState || finalState.result.type !== "payment-verified") return;
+    const afterResult = await processAfterHandle({
+      httpServer,
+      state: c.get("x402"),
+      autoSettle,
+    });
 
-    if (finalState.result.paymentRequirements.scheme === "upto") {
-      if (finalState.tracking?.success) {
-        c.header("x-upto-session-id", finalState.tracking.sessionId);
-      }
-      return;
-    }
-
-    if (!autoSettle) return;
-
-    const settlement = await httpServer.processSettlement(
-      finalState.result.paymentPayload,
-      finalState.result.paymentRequirements
-    );
-
-    if (settlement.success) {
-      for (const [key, value] of Object.entries(settlement.headers)) {
-        c.header(key, String(value));
-      }
+    for (const [key, value] of Object.entries(afterResult.headers)) {
+      c.header(key, value);
     }
   };
 }
 
+// -----------------------------------------------------------------------------
+// Utility Exports
+// -----------------------------------------------------------------------------
+
 export function getHttpServer(
   config: HonoPaymentMiddlewareConfig
 ): x402HTTPResourceServer {
-  return resolveHttpServer(config);
+  return resolveHttpServer(config, "Hono");
 }
 
 export async function initializeHttpServer(
   config: HonoPaymentMiddlewareConfig
 ): Promise<x402HTTPResourceServer> {
-  const httpServer = resolveHttpServer(config);
+  const httpServer = resolveHttpServer(config, "Hono");
   await httpServer.initialize();
   return httpServer;
 }
