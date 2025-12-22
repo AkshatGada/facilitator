@@ -1,10 +1,13 @@
 /**
- * Starknet Client Example - Calls the Starknet paid API using the facilitator
+ * Starknet Client Example - Calls the Starknet paid API using fetchWithPayment
  *
  * Usage:
  *   1. Start the facilitator (Starknet enabled):
  *      STARKNET_NETWORKS=starknet-mainnet,starknet-sepolia \
  *      STARKNET_SPONSOR_ADDRESS=0x... \
+ *      STARKNET_PAYMASTER_ENDPOINT_STARKNET_MAINNET=https://starknet.paymaster.avnu.fi \
+ *      STARKNET_PAYMASTER_ENDPOINT_STARKNET_SEPOLIA=https://starknet.paymaster.avnu.fi \
+ *      STARKNET_PAYMASTER_API_KEY=your-avnu-api-key \
  *      bun run dev
  *   2. Start the Starknet API:
  *      STARKNET_PAY_TO=0x... bun run examples/starknetApi.ts
@@ -15,40 +18,41 @@
  *
  * Environment variables:
  *   - BASE_URL: Paid API base URL (default: http://localhost:4024)
- *   - FACILITATOR_URL: Facilitator URL (default: http://localhost:8090)
  *   - STARKNET_ACCOUNT_ADDRESS: Payer account address (required)
  *   - STARKNET_ACCOUNT_PRIVATE_KEY: Payer private key (required)
  *   - STARKNET_RPC_URL: Optional Starknet RPC URL override
  *   - STARKNET_NETWORK: starknet:mainnet | starknet:sepolia (default: starknet:sepolia)
+ *   - STARKNET_PAYMASTER_ENDPOINT: Optional paymaster endpoint override (default: AVNU)
  *   - STARKNET_PAYMASTER_API_KEY: Optional paymaster API key for build calls
+ *
+ * Notes:
+ *   - Starknet payments require typedData. The unified client enforces this.
  */
 
 import { Account } from "starknet";
 import {
-  createPaymentPayload,
-  decodePaymentRequired,
-  encodePaymentSignature,
-  decodePaymentResponse,
-  DEFAULT_PAYMASTER_ENDPOINTS,
-  HTTP_HEADERS,
   createProvider,
+  decodePaymentResponse,
+  HTTP_HEADERS,
   validateNetwork,
-  type PaymentRequired,
-  type PaymentRequirements,
   type StarknetNetworkId,
 } from "x402-starknet";
+
+import { createUnifiedClient } from "../src/unifiedClient.js";
 
 // ============================================================================
 // Configuration
 // ============================================================================
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:4024";
-const FACILITATOR_URL = process.env.FACILITATOR_URL ?? "http://localhost:8090";
 const STARKNET_ACCOUNT_ADDRESS = process.env.STARKNET_ACCOUNT_ADDRESS;
 const STARKNET_ACCOUNT_PRIVATE_KEY = process.env.STARKNET_ACCOUNT_PRIVATE_KEY;
 const STARKNET_RPC_URL = process.env.STARKNET_RPC_URL;
 const STARKNET_PAYMASTER_API_KEY = process.env.STARKNET_PAYMASTER_API_KEY;
-const DEFAULT_NETWORK = validateNetwork(
+const STARKNET_PAYMASTER_ENDPOINT =
+  process.env.STARKNET_PAYMASTER_ENDPOINT ??
+  "https://starknet.paymaster.avnu.fi";
+const PREFERRED_NETWORK = validateNetwork(
   process.env.STARKNET_NETWORK ?? "starknet:sepolia"
 ) as StarknetNetworkId;
 
@@ -62,93 +66,40 @@ if (!STARKNET_ACCOUNT_ADDRESS || !STARKNET_ACCOUNT_PRIVATE_KEY) {
 
 const PATH = "/api/starknet-premium";
 
-type SupportedResponse = {
-  kinds?: Array<{
-    scheme?: string;
-    network?: string;
-    extra?: Record<string, unknown>;
-  }>;
-};
-
 // ============================================================================
-// Helpers
+// Setup
 // ============================================================================
 
-async function fetchWithPayment(paymentHeader?: string): Promise<Response> {
-  return fetch(`${BASE_URL}${PATH}`, {
-    headers: paymentHeader
-      ? { [HTTP_HEADERS.PAYMENT_SIGNATURE]: paymentHeader }
-      : {},
-  });
-}
+const provider = createProvider({
+  network: PREFERRED_NETWORK,
+  ...(STARKNET_RPC_URL ? { rpcUrl: STARKNET_RPC_URL } : {}),
+});
 
-async function getPaymentRequired(response: Response): Promise<PaymentRequired> {
-  const header = response.headers.get(HTTP_HEADERS.PAYMENT_REQUIRED);
-  if (header) {
-    return decodePaymentRequired(header);
-  }
+const account = new Account({
+  provider,
+  address: STARKNET_ACCOUNT_ADDRESS,
+  signer: STARKNET_ACCOUNT_PRIVATE_KEY,
+});
 
-  const body = (await response
-    .clone()
-    .json()
-    .catch(() => null)) as PaymentRequired | null;
-  if (body) {
-    return body;
-  }
-
-  throw new Error("Missing PAYMENT-REQUIRED response.");
-}
-
-function pickRequirement(
-  paymentRequired: PaymentRequired,
-  preferredNetwork: StarknetNetworkId
-): PaymentRequirements {
-  const preferred = paymentRequired.accepts.find(
-    (requirement) => requirement.network === preferredNetwork
-  );
-  const first = paymentRequired.accepts[0];
-
-  if (preferred) return preferred;
-  if (first) return first;
-
-  throw new Error("No payment options available.");
-}
-
-async function resolvePaymasterEndpoint(
-  network: StarknetNetworkId
-): Promise<string> {
-  try {
-    const supported = (await fetch(`${FACILITATOR_URL}/supported`).then((res) =>
-      res.json()
-    )) as SupportedResponse;
-
-    const kind = supported.kinds?.find(
-      (candidate) =>
-        candidate?.scheme === "exact" && candidate?.network === network
+const { fetchWithPayment } = createUnifiedClient({
+  starknetExact: {
+    account,
+    paymasterEndpoint: STARKNET_PAYMASTER_ENDPOINT,
+    ...(STARKNET_PAYMASTER_API_KEY
+      ? { paymasterApiKey: STARKNET_PAYMASTER_API_KEY }
+      : {}),
+    networks: [PREFERRED_NETWORK],
+  },
+  paymentRequirementsSelector: (_x402Version, accepts) => {
+    const preferred = accepts.find(
+      (requirement) => requirement.network === PREFERRED_NETWORK
     );
-
-    const extra = kind?.extra as Record<string, unknown> | undefined;
-    const endpoint = extra?.paymasterEndpoint;
-    if (typeof endpoint === "string" && endpoint.length > 0) {
-      return endpoint;
-    }
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.warn(
-      "Failed to fetch facilitator /supported, using defaults:",
-      error
-    );
-  }
-
-  return DEFAULT_PAYMASTER_ENDPOINTS[network];
-}
-
-function ensureTypedData(payload: { typedData?: unknown }): void {
-  const typedData = payload.typedData;
-  if (typeof typedData !== "object" || typedData === null || Array.isArray(typedData)) {
-    throw new Error("Payment payload missing typedData (required).");
-  }
-}
+    const fallback = accepts[0];
+    if (preferred) return preferred;
+    if (fallback) return fallback;
+    throw new Error("No payment options available.");
+  },
+});
 
 // ============================================================================
 // Main
@@ -157,44 +108,8 @@ function ensureTypedData(payload: { typedData?: unknown }): void {
 async function main(): Promise<void> {
   // eslint-disable-next-line no-console
   console.log("Requesting paid endpoint...");
-  let response = await fetchWithPayment();
 
-  if (response.status !== 402) {
-    // eslint-disable-next-line no-console
-    console.log("Unexpected status:", response.status);
-    // eslint-disable-next-line no-console
-    console.log(await response.text());
-    return;
-  }
-
-  const paymentRequired = await getPaymentRequired(response);
-  const requirement = pickRequirement(paymentRequired, DEFAULT_NETWORK);
-  const paymasterEndpoint = await resolvePaymasterEndpoint(requirement.network);
-
-  const provider = createProvider({
-    network: requirement.network,
-    ...(STARKNET_RPC_URL ? { rpcUrl: STARKNET_RPC_URL } : {}),
-  });
-
-  const account = new Account({
-    provider,
-    address: STARKNET_ACCOUNT_ADDRESS,
-    signer: STARKNET_ACCOUNT_PRIVATE_KEY,
-  });
-
-  const payload = await createPaymentPayload(account, 2, requirement, {
-    endpoint: paymasterEndpoint,
-    network: requirement.network,
-    ...(STARKNET_PAYMASTER_API_KEY
-      ? { apiKey: STARKNET_PAYMASTER_API_KEY }
-      : {}),
-  });
-
-  ensureTypedData(payload);
-
-  const paymentHeader = encodePaymentSignature(payload);
-
-  response = await fetchWithPayment(paymentHeader);
+  const response = await fetchWithPayment(`${BASE_URL}${PATH}`);
 
   if (!response.ok) {
     // eslint-disable-next-line no-console

@@ -17,24 +17,12 @@
 
 import { Elysia } from "elysia";
 import { node } from "@elysiajs/node";
-import { x402ResourceServer } from "@x402/core/server";
-import {
-  HTTPFacilitatorClient,
-  x402HTTPResourceServer,
-  type HTTPAdapter,
-} from "@x402/core/http";
-import { ExactEvmScheme } from "@x402/evm/exact/server";
-import { ExactSvmScheme } from "@x402/svm/exact/server";
+import { HTTPFacilitatorClient } from "@x402/core/http";
 
+import { createElysiaPaymentMiddleware } from "../src/elysia/index.js";
 import { evmAccount, svmAccount } from "../src/signers/index.js";
-import { UptoEvmServerScheme } from "../src/upto/evm/serverScheme.js";
-import {
-  createUptoModule,
-  trackUptoPayment,
-  formatSession,
-  TRACKING_ERROR_MESSAGES,
-  TRACKING_ERROR_STATUS,
-} from "../src/upto/lib.js";
+import { createResourceServer } from "../src/server.js";
+import { createUptoModule, formatSession } from "../src/upto/lib.js";
 
 // ============================================================================
 // Configuration
@@ -61,12 +49,7 @@ const upto = createUptoModule({
 });
 
 // Resource server with all payment schemes
-const resourceServer = new x402ResourceServer(facilitatorClient)
-  .register("eip155:*", new ExactEvmScheme())
-  .register("eip155:*", new UptoEvmServerScheme())
-  .register("solana:*", new ExactSvmScheme());
-
-await resourceServer.initialize();
+const resourceServer = createResourceServer(facilitatorClient);
 
 // ============================================================================
 // Route Configuration
@@ -113,41 +96,11 @@ const routes = {
   },
 } as const;
 
-const httpServer = new x402HTTPResourceServer(resourceServer, routes);
-
-// ============================================================================
-// HTTP Adapter
-// ============================================================================
-
-const X402_RESULT = Symbol.for("x402.result");
-
-function createAdapter(ctx: { request: Request; body: unknown }): HTTPAdapter {
-  const url = new URL(ctx.request.url);
-  const queryParams: Record<string, string | string[]> = {};
-
-  for (const [key, value] of url.searchParams.entries()) {
-    const existing = queryParams[key];
-    if (existing === undefined) {
-      queryParams[key] = value;
-    } else if (Array.isArray(existing)) {
-      existing.push(value);
-    } else {
-      queryParams[key] = [existing, value];
-    }
-  }
-
-  return {
-    getHeader: (name) => ctx.request.headers.get(name) ?? undefined,
-    getMethod: () => ctx.request.method,
-    getPath: () => url.pathname,
-    getUrl: () => ctx.request.url,
-    getAcceptHeader: () => ctx.request.headers.get("accept") ?? "",
-    getUserAgent: () => ctx.request.headers.get("user-agent") ?? "",
-    getQueryParams: () => queryParams,
-    getQueryParam: (name) => queryParams[name],
-    getBody: () => ctx.body,
-  };
-}
+const paymentMiddleware = createElysiaPaymentMiddleware({
+  resourceServer,
+  routes,
+  upto: { store: upto.store },
+});
 
 // ============================================================================
 // Elysia Application
@@ -159,79 +112,7 @@ export const app = new Elysia({
   adapter: node(),
 })
   .use(upto.sweeper)
-
-  // Payment verification middleware
-  .onBeforeHandle(async (ctx) => {
-    const adapter = createAdapter(ctx);
-    const result = await httpServer.processHTTPRequest({
-      adapter,
-      path: adapter.getPath(),
-      method: adapter.getMethod(),
-      paymentHeader: adapter.getHeader("x-payment"),
-    });
-
-    (ctx.request as unknown as Record<symbol, unknown>)[X402_RESULT] = result;
-
-    if (result.type === "payment-error") {
-      ctx.set.status = result.response.status;
-      ctx.set.headers = { ...ctx.set.headers, ...result.response.headers };
-      return result.response.body;
-    }
-
-    if (
-      result.type === "payment-verified" &&
-      result.paymentRequirements.scheme === "upto"
-    ) {
-      const tracking = trackUptoPayment(
-        upto.store,
-        result.paymentPayload,
-        result.paymentRequirements
-      );
-
-      if (!tracking.success) {
-        ctx.set.status = TRACKING_ERROR_STATUS[tracking.error];
-        ctx.set.headers["content-type"] = "application/json";
-        return {
-          error: tracking.error,
-          message: TRACKING_ERROR_MESSAGES[tracking.error],
-          sessionId: tracking.sessionId,
-        };
-      }
-
-      ctx.set.headers["x-upto-session-id"] = tracking.sessionId;
-    }
-  })
-
-  // Settlement middleware (for exact scheme only)
-  .onAfterHandle(async (ctx) => {
-    const result = (ctx.request as unknown as Record<symbol, unknown>)[
-      X402_RESULT
-    ] as
-      | {
-          type: string;
-          paymentPayload?: unknown;
-          paymentRequirements?: { scheme: string };
-        }
-      | undefined;
-
-    if (result?.type !== "payment-verified") return;
-    if (result.paymentRequirements?.scheme === "upto") return; // Upto settles via sweeper or /upto-close
-
-    const settlement = await httpServer.processSettlement(
-      result.paymentPayload as Parameters<
-        typeof httpServer.processSettlement
-      >[0],
-      result.paymentRequirements as Parameters<
-        typeof httpServer.processSettlement
-      >[1]
-    );
-
-    if (settlement.success) {
-      ctx.set.headers = { ...ctx.set.headers, ...settlement.headers };
-    } else {
-      console.error("Settlement failed:", settlement.errorReason);
-    }
-  })
+  .use(paymentMiddleware)
 
   // ---- Routes ----
 
@@ -271,7 +152,7 @@ export const app = new Elysia({
 // Start Server
 // ============================================================================
 
-app.listen(4022);
+app.listen(PORT);
 console.log(`
 Paid API listening on http://localhost:${PORT}
 Facilitator: ${FACILITATOR_URL}

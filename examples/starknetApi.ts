@@ -5,6 +5,9 @@
  *   1. Start the facilitator (Starknet enabled):
  *      STARKNET_NETWORKS=starknet-mainnet,starknet-sepolia \
  *      STARKNET_SPONSOR_ADDRESS=0x... \
+ *      STARKNET_PAYMASTER_ENDPOINT_STARKNET_MAINNET=https://starknet.paymaster.avnu.fi \
+ *      STARKNET_PAYMASTER_ENDPOINT_STARKNET_SEPOLIA=https://starknet.paymaster.avnu.fi \
+ *      STARKNET_PAYMASTER_API_KEY=your-avnu-api-key \
  *      bun run dev
  *   2. Start this server:
  *      STARKNET_PAY_TO=0x... bun run examples/starknetApi.ts

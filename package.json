@@ -15,6 +15,10 @@
       "import": "./dist/server.js",
       "types": "./dist/server.d.ts"
     },
+    "./elysia": {
+      "import": "./dist/elysia/index.js",
+      "types": "./dist/elysia/index.d.ts"
+    },
     "./signers/cdp": {
       "import": "./dist/signers/lib.js",
       "types": "./dist/signers/lib.d.ts"
@@ -26,6 +30,10 @@
     "./upto/evm": {
       "import": "./dist/upto/evm/lib.js",
       "types": "./dist/upto/evm/lib.d.ts"
+    },
+    "./client": {
+      "import": "./dist/unifiedClient.js",
+      "types": "./dist/unifiedClient.d.ts"
     }
   },
   "bin": {

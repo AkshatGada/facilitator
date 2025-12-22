@@ -13,13 +13,11 @@
  *   - RPC_URL: EVM RPC URL (default: EVM_RPC_URL_BASE env var)
  */
 
-import { x402Client, x402HTTPClient } from "@x402/core/client";
-import { registerExactEvmScheme } from "@x402/evm/exact/client";
 import { createPublicClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
 
-import { registerUptoEvmClientScheme } from "../src/upto/evm/lib.js";
+import { createUnifiedClient } from "../src/unifiedClient.js";
 
 // ============================================================================
 // Configuration
@@ -45,28 +43,17 @@ const publicClient = createPublicClient({
   transport: http(process.env.RPC_URL ?? process.env.EVM_RPC_URL_BASE),
 });
 
-// Create x402 client with both exact and upto schemes
-const x402 = new x402Client();
-registerExactEvmScheme(x402, { signer: account });
-const uptoScheme = registerUptoEvmClientScheme(x402, {
-  signer: account,
-  publicClient,
-  facilitatorUrl: FACILITATOR_URL,
+const { fetchWithPayment } = createUnifiedClient({
+  evmExact: { signer: account },
+  evmUpto: {
+    signer: account,
+    publicClient,
+    facilitatorUrl: FACILITATOR_URL,
+  },
 });
 
-const httpClient = new x402HTTPClient(x402);
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-async function fetchWithPayment(
-  path: string,
-  paymentHeader?: string
-): Promise<Response> {
-  return fetch(`${BASE_URL}${path}`, {
-    headers: paymentHeader ? { "PAYMENT-SIGNATURE": paymentHeader } : {},
-  });
+async function paidFetch(path: string): Promise<Response> {
+  return fetchWithPayment(`${BASE_URL}${path}`);
 }
 
 // ============================================================================
@@ -77,34 +64,11 @@ async function testExactScheme(): Promise<boolean> {
   console.log("\n=== Testing Exact Scheme ===");
   const path = "/api/premium";
 
-  // First request - should get 402
-  let res = await fetchWithPayment(path);
-  if (res.status !== 402) {
-    console.error("Expected 402, got", res.status);
+  const res = await paidFetch(path);
+  if (res.status === 402) {
+    console.error("Exact payment failed: still 402 after payment attempt");
     return false;
   }
-
-  const paymentRequired = httpClient.getPaymentRequiredResponse(
-    (name) => res.headers.get(name),
-    await res
-      .clone()
-      .json()
-      .catch(() => null)
-  );
-
-  console.log("Payment required:", {
-    scheme: paymentRequired.accepts[0]?.scheme,
-    network: paymentRequired.accepts[0]?.network,
-    amount: paymentRequired.accepts[0]?.amount,
-  });
-
-  // Create payment payload using x402 client
-  const paymentPayload = await httpClient.createPaymentPayload(paymentRequired);
-  const headers = httpClient.encodePaymentSignatureHeader(paymentPayload);
-  const paymentHeader = headers["PAYMENT-SIGNATURE"] || headers["X-PAYMENT"];
-
-  // Retry with payment
-  res = await fetchWithPayment(path, paymentHeader);
   if (!res.ok) {
     console.error("Exact payment failed:", res.status, await res.text());
     return false;
@@ -113,7 +77,6 @@ async function testExactScheme(): Promise<boolean> {
   const data = await res.json();
   console.log("Exact scheme response:", data);
 
-  // Check for settlement response
   const txHeader =
     res.headers.get("X-PAYMENT-RESPONSE") ||
     res.headers.get("PAYMENT-RESPONSE");
@@ -135,46 +98,15 @@ async function testExactScheme(): Promise<boolean> {
 async function testUptoScheme(): Promise<boolean> {
   console.log("\n=== Testing Upto Scheme ===");
   const path = "/api/upto-premium";
-  let paymentHeader: string | undefined;
-  let sessionId: string | undefined;
+  let sessionId: string | null = null;
 
-  // Make a few requests to accrue spend
   for (let i = 0; i < 3; i++) {
-    let res = await fetchWithPayment(path, paymentHeader);
+    const res = await paidFetch(path);
 
-    // Handle 402 - need to create/refresh payment
     if (res.status === 402) {
-      const paymentRequired = httpClient.getPaymentRequiredResponse(
-        (name) => res.headers.get(name),
-        await res
-          .clone()
-          .json()
-          .catch(() => null)
-      );
-
-      // Check if this is a cap_exhausted or session_closed error
-      const body = (await res
-        .clone()
-        .json()
-        .catch(() => ({}))) as { error?: string };
-      if (body.error === "cap_exhausted" || body.error === "session_closed") {
-        console.log(`Server returned ${body.error}, invalidating permit cache`);
-        uptoScheme.invalidatePermit(
-          paymentRequired.accepts[0]?.network ?? "eip155:8453",
-          paymentRequired.accepts[0]?.asset as `0x${string}`
-        );
-      }
-
-      // Create payment using the x402 client (handles caching internally)
-      const paymentPayload =
-        await httpClient.createPaymentPayload(paymentRequired);
-      const headers = httpClient.encodePaymentSignatureHeader(paymentPayload);
-      paymentHeader = headers["PAYMENT-SIGNATURE"] || headers["X-PAYMENT"];
-
-      // Retry with payment
-      res = await fetchWithPayment(path, paymentHeader);
+      console.error("Upto payment failed: still 402 after payment attempt");
+      return false;
     }
-
     if (!res.ok) {
       console.error("Request failed:", res.status, await res.text());
       return false;
@@ -191,33 +123,18 @@ async function testUptoScheme(): Promise<boolean> {
 
   console.log("Session ID:", sessionId);
 
-  // Check session status before settlement
   const status1 = await fetch(`${BASE_URL}/api/upto-session/${sessionId}`).then(
     (r) => r.json()
   );
   console.log("Session status (before settle):", status1);
 
-  // Force a final batch settle
-  const closeRes = await fetch(`${BASE_URL}/api/upto-close`, {
+  const closeResult = await fetch(`${BASE_URL}/api/upto-close`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sessionId }),
-  });
-  const closeData = (await closeRes.json()) as {
-    success?: boolean;
-    status?: string;
-    network?: string;
-    asset?: string;
-  };
-  console.log("Close/settle response:", closeData);
+  }).then((r) => r.json());
+  console.log("Close result:", closeResult);
 
-  // Invalidate permit cache after successful settlement
-  if (closeData.success && closeData.status === "closed" && closeData.network && closeData.asset) {
-    console.log("Invalidating permit cache for", closeData.network, closeData.asset);
-    uptoScheme.invalidatePermit(closeData.network, closeData.asset as `0x${string}`);
-  }
-
-  // Check session status after settlement
   const status2 = await fetch(`${BASE_URL}/api/upto-session/${sessionId}`).then(
     (r) => r.json()
   );
@@ -230,32 +147,28 @@ async function testUptoScheme(): Promise<boolean> {
 // Main
 // ============================================================================
 
-async function main() {
-  console.log("=== x402 Smoke Test ===");
-  console.log("Payer:", account.address);
+async function main(): Promise<void> {
+  console.log("=== Smoke Test Client ===");
   console.log("Base URL:", BASE_URL);
-  console.log("Facilitator:", FACILITATOR_URL);
+  console.log("Facilitator URL:", FACILITATOR_URL);
+  console.log("Payer:", account.address);
 
-  // Test exact scheme (single payment per request)
   const exactOk = await testExactScheme();
   if (!exactOk) {
-    console.error("\n❌ Exact scheme test failed");
+    console.error("\nExact scheme test failed");
     process.exit(1);
   }
-  console.log("✅ Exact scheme test passed");
 
-  // Test upto scheme (batched payments)
   const uptoOk = await testUptoScheme();
   if (!uptoOk) {
-    console.error("\n❌ Upto scheme test failed");
+    console.error("\nUpto scheme test failed");
     process.exit(1);
   }
-  console.log("✅ Upto scheme test passed");
 
   console.log("\n=== All tests passed ===");
 }
 
-main().catch((err) => {
-  console.error(err);
+main().catch((error) => {
+  console.error(error);
   process.exit(1);
 });

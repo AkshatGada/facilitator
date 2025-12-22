@@ -66,15 +66,24 @@ export interface UptoEvmPublicClient {
   }) => Promise<unknown>;
 }
 
-export interface UptoEvmClientConfig {
+export interface UptoEvmClientSchemeConfig {
   /** Wallet signer for permit signatures */
   signer: UptoEvmClientSigner;
   /** Public client for reading contract state (nonces) */
   publicClient: UptoEvmPublicClient;
-  /** Facilitator URL for fetching signer address */
-  facilitatorUrl: string;
+  /** Facilitator URL for fetching signer address (optional if signer is configured locally) */
+  facilitatorUrl?: string;
+  /** Facilitator signer address (local override, skips /supported lookup) */
+  facilitatorSigner?: Address;
+  /** Facilitator signer mapping by network (local override, skips /supported lookup) */
+  facilitatorSignerByNetwork?: Record<string, Address>;
   /** Deadline buffer in seconds (default: 60) */
   deadlineBufferSec?: number;
+}
+
+export interface UptoEvmClientConfig extends UptoEvmClientSchemeConfig {
+  /** Optional specific networks to register (defaults to eip155:*) */
+  networks?: string | string[];
 }
 
 // ============================================================================
@@ -204,14 +213,29 @@ export class UptoEvmClientScheme implements SchemeNetworkClient {
 
   private readonly signer: UptoEvmClientSigner;
   private readonly publicClient: UptoEvmPublicClient;
-  private readonly facilitatorUrl: string;
+  private readonly facilitatorUrl?: string;
+  private readonly facilitatorSigner?: Address;
+  private readonly facilitatorSignerByNetwork?: Record<string, Address>;
   private readonly permitCache: PermitCache;
   private facilitatorSignerCache = new Map<string, Address>();
 
-  constructor(config: UptoEvmClientConfig) {
+  constructor(config: UptoEvmClientSchemeConfig) {
+    const hasLocalSigner =
+      !!config.facilitatorSigner ||
+      (config.facilitatorSignerByNetwork &&
+        Object.keys(config.facilitatorSignerByNetwork).length > 0);
+
+    if (!config.facilitatorUrl && !hasLocalSigner) {
+      throw new Error(
+        "UptoEvmClientScheme requires facilitatorUrl or local facilitator signer configuration."
+      );
+    }
+
     this.signer = config.signer;
     this.publicClient = config.publicClient;
     this.facilitatorUrl = config.facilitatorUrl;
+    this.facilitatorSigner = config.facilitatorSigner;
+    this.facilitatorSignerByNetwork = config.facilitatorSignerByNetwork;
     this.permitCache = new PermitCache(config.deadlineBufferSec ?? 60);
   }
 
@@ -231,9 +255,30 @@ export class UptoEvmClientScheme implements SchemeNetworkClient {
     const cached = this.facilitatorSignerCache.get(network);
     if (cached) return cached;
 
-    const signer = await fetchFacilitatorSigner(this.facilitatorUrl, network);
+    const signer = await this.resolveFacilitatorSigner(network);
     this.facilitatorSignerCache.set(network, signer);
     return signer;
+  }
+
+  private async resolveFacilitatorSigner(network: string): Promise<Address> {
+    if (this.facilitatorSignerByNetwork?.[network]) {
+      return getAddress(this.facilitatorSignerByNetwork[network]) as Address;
+    }
+
+    const wildcard = this.facilitatorSignerByNetwork?.["eip155:*"];
+    if (wildcard) {
+      return getAddress(wildcard) as Address;
+    }
+
+    if (this.facilitatorSigner) {
+      return getAddress(this.facilitatorSigner) as Address;
+    }
+
+    if (!this.facilitatorUrl) {
+      throw new Error(`No facilitator signer configured for ${network}`);
+    }
+
+    return fetchFacilitatorSigner(this.facilitatorUrl, network);
   }
 
   async createPaymentPayload(
@@ -353,7 +398,16 @@ export function registerUptoEvmClientScheme(
   client: { register(network: string, scheme: SchemeNetworkClient): unknown },
   config: UptoEvmClientConfig
 ): UptoEvmClientScheme {
-  const scheme = new UptoEvmClientScheme(config);
-  client.register("eip155:*", scheme);
+  const { networks, ...schemeConfig } = config;
+  const scheme = new UptoEvmClientScheme(schemeConfig);
+  const registerNetworks = Array.isArray(networks)
+    ? networks
+    : networks
+      ? [networks]
+      : ["eip155:*"];
+
+  for (const network of registerNetworks) {
+    client.register(network, scheme);
+  }
   return scheme;
 }

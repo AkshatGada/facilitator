@@ -16,6 +16,7 @@ A production-ready payment settlement service for the [x402 protocol](https://gi
 - [Custom Signers](#custom-signers)
 - [API Reference](#api-reference)
 - [Payment Schemes](#payment-schemes)
+- [Unified Client](#unified-client)
 - [Upto Module](#upto-module)
 - [Resource Server](#resource-server)
 - [Testing](#testing)
@@ -584,6 +585,54 @@ Permit-based flow for efficient EVM token payments:
 
 - ERC-2612 Permit tokens only
 - In-memory sessions (lost on restart without custom store)
+
+## Unified Client
+
+The unified client wraps x402 client + HTTP helpers into a single
+`fetchWithPayment` function. It handles 402 responses by creating a payment
+payload and retrying the request with the `PAYMENT-SIGNATURE` header.
+
+```typescript
+import { createUnifiedClient } from "@daydreamsai/facilitator/client";
+import { createPublicClient, http } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { base } from "viem/chains";
+
+const account = privateKeyToAccount(
+  process.env.CLIENT_EVM_PRIVATE_KEY as `0x${string}`
+);
+const publicClient = createPublicClient({
+  chain: base,
+  transport: http(process.env.RPC_URL),
+});
+
+const { fetchWithPayment, uptoScheme } = createUnifiedClient({
+  evmExact: { signer: account },
+  evmUpto: {
+    signer: account,
+    publicClient,
+    facilitatorUrl: process.env.FACILITATOR_URL,
+    // Optional: skip /supported lookup by setting a local signer map
+    // facilitatorSignerByNetwork: { "eip155:8453": "0x..." },
+  },
+});
+
+const response = await fetchWithPayment("https://api.example.com/premium");
+```
+
+### Upto Scheme Behavior
+
+- ERC-2612 permits are cached per `(network, asset, owner, facilitator signer)`
+  and reused until close to expiry.
+- If a paid request still returns 402 with `cap_exhausted` or `session_closed`,
+  the unified client invalidates the cached permit and retries once.
+- You can force a new permit with
+  `uptoScheme?.invalidatePermit("eip155:8453", "0x...")`.
+
+### Starknet Note
+
+Starknet exact requires `typedData` in the payment payload. The unified client
+throws if `typedData` is missing.
 
 ## Upto Module
 
