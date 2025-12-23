@@ -113,8 +113,8 @@ export class ExactStarknetClientScheme implements SchemeNetworkClient {
   readonly scheme = "exact";
 
   private readonly account: Account;
-  private readonly paymasterEndpoint?: string | Partial<Record<StarknetNetworkId, string>>;
-  private readonly paymasterApiKey?: string | Partial<Record<StarknetNetworkId, string>>;
+  private readonly paymasterEndpoint?: string | Partial<Record<StarknetCaipId, string>>;
+  private readonly paymasterApiKey?: string | Partial<Record<StarknetCaipId, string>>;
 
   constructor(config: ExactStarknetClientSchemeConfig) {
     if (!config.account) {
