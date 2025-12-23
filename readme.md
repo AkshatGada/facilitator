@@ -172,6 +172,33 @@ bun dev
 curl http://localhost:8090/supported
 ```
 
+### Multi-Chain Paid Endpoint (EVM + Solana + Starknet)
+
+This repo includes a single endpoint example that accepts EVM, Solana, and
+Starknet payments in one `accepts` array.
+
+Start the facilitator with Starknet enabled:
+
+```bash
+STARKNET_NETWORKS=starknet-mainnet,starknet-sepolia \
+STARKNET_SPONSOR_ADDRESS=0x... \
+STARKNET_PAYMASTER_ENDPOINT_STARKNET_MAINNET=https://starknet.paymaster.avnu.fi \
+STARKNET_PAYMASTER_ENDPOINT_STARKNET_SEPOLIA=https://starknet.paymaster.avnu.fi \
+STARKNET_PAYMASTER_API_KEY=your-avnu-api-key \
+bun dev
+```
+
+Run the API example:
+
+```bash
+EVM_PRIVATE_KEY=... \
+SVM_PRIVATE_KEY=... \
+STARKNET_PAY_TO=0x... \
+bun run examples/paidApiAll.ts
+```
+
+See `examples/paidApiAll.ts` for the full route config.
+
 ## Configuration
 
 ### Environment Variables
