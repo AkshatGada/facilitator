@@ -11,7 +11,7 @@ import {
 import { ExactStarknetScheme } from "../../src/starknet/exact/facilitator.js";
 
 const baseStarknetConfig = {
-  network: "starknet:mainnet",
+  network: "starknet:SN_MAIN",
   rpcUrl: "https://starknet-mainnet.example.com",
   paymasterEndpoint: "https://starknet.paymaster.avnu.fi",
   sponsorAddress: "0xabc123",
@@ -20,10 +20,10 @@ const baseStarknetConfig = {
 describe("Starknet network registry", () => {
   it("returns Starknet CAIP identifiers", () => {
     expect(getStarknetNetwork("starknet-mainnet")?.caip).toBe(
-      "starknet:mainnet"
+      "starknet:SN_MAIN"
     );
     expect(getStarknetNetworkCaip("starknet-sepolia")).toBe(
-      "starknet:sepolia"
+      "starknet:SN_SEPOLIA"
     );
   });
 
@@ -87,7 +87,7 @@ describe("ExactStarknetScheme typedData requirement", () => {
 
   const requirements: PaymentRequirements = {
     scheme: "exact",
-    network: "starknet:mainnet",
+    network: "starknet:SN_MAIN",
     asset: "0xasset",
     amount: "1",
     payTo: "0xpayto",

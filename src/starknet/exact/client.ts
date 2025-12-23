@@ -5,15 +5,24 @@
  * Requires typedData to be present for settlement.
  */
 
-import type { PaymentPayload, PaymentRequirements, SchemeNetworkClient } from "@x402/core/types";
+import type {
+  PaymentPayload,
+  PaymentRequirements,
+  SchemeNetworkClient,
+} from "@x402/core/types";
 import type { Account } from "starknet";
 import {
   createPaymentPayload,
   DEFAULT_PAYMASTER_ENDPOINTS,
   PAYMENT_REQUIREMENTS_SCHEMA,
   type PaymentRequirements as StarknetPaymentRequirements,
-  type StarknetNetworkId,
 } from "x402-starknet";
+import {
+  toStarknetCanonicalCaip,
+  toStarknetLegacyCaip,
+  type StarknetCaipId,
+  type StarknetLegacyCaipId,
+} from "../../networks.js";
 
 // ============================================================================
 // Types
@@ -23,19 +32,19 @@ export interface ExactStarknetClientSchemeConfig {
   /** User account for signing Starknet typed data */
   account: Account;
   /** Paymaster endpoint override (string for all networks or per-network map) */
-  paymasterEndpoint?: string | Partial<Record<StarknetNetworkId, string>>;
+  paymasterEndpoint?: string | Partial<Record<StarknetCaipId, string>>;
   /** Paymaster API key (string for all networks or per-network map) */
-  paymasterApiKey?: string | Partial<Record<StarknetNetworkId, string>>;
+  paymasterApiKey?: string | Partial<Record<StarknetCaipId, string>>;
 }
 
 export interface ExactStarknetClientConfig extends ExactStarknetClientSchemeConfig {
   /** Optional specific networks to register (defaults to mainnet + sepolia) */
-  networks?: StarknetNetworkId | StarknetNetworkId[];
+  networks?: StarknetCaipId | StarknetCaipId[];
 }
 
-const DEFAULT_STARKNET_CLIENT_NETWORKS: StarknetNetworkId[] = [
-  "starknet:mainnet",
-  "starknet:sepolia",
+const DEFAULT_STARKNET_CLIENT_NETWORKS: StarknetCaipId[] = [
+  "starknet:SN_MAIN",
+  "starknet:SN_SEPOLIA",
 ];
 
 // ============================================================================
@@ -54,9 +63,13 @@ export function assertStarknetTypedData(
 }
 
 function toStarknetRequirements(
-  requirements: PaymentRequirements
+  requirements: PaymentRequirements,
+  legacyNetwork: StarknetLegacyCaipId
 ): StarknetPaymentRequirements {
-  const parsed = PAYMENT_REQUIREMENTS_SCHEMA.safeParse(requirements);
+  const parsed = PAYMENT_REQUIREMENTS_SCHEMA.safeParse({
+    ...requirements,
+    network: legacyNetwork,
+  });
   if (parsed.success) {
     return parsed.data;
   }
@@ -66,8 +79,8 @@ function toStarknetRequirements(
 }
 
 function resolvePaymasterEndpoint(
-  network: StarknetNetworkId,
-  override?: string | Partial<Record<StarknetNetworkId, string>>
+  network: StarknetCaipId,
+  override?: string | Partial<Record<StarknetCaipId, string>>
 ): string {
   if (typeof override === "string") {
     return override;
@@ -75,12 +88,16 @@ function resolvePaymasterEndpoint(
   if (override?.[network]) {
     return override[network] as string;
   }
-  return DEFAULT_PAYMASTER_ENDPOINTS[network];
+  const legacyNetwork = toStarknetLegacyCaip(network);
+  if (!legacyNetwork) {
+    throw new Error(`Unsupported Starknet network: ${network}`);
+  }
+  return DEFAULT_PAYMASTER_ENDPOINTS[legacyNetwork];
 }
 
 function resolvePaymasterApiKey(
-  network: StarknetNetworkId,
-  override?: string | Partial<Record<StarknetNetworkId, string>>
+  network: StarknetCaipId,
+  override?: string | Partial<Record<StarknetCaipId, string>>
 ): string | undefined {
   if (typeof override === "string") {
     return override;
@@ -117,14 +134,27 @@ export class ExactStarknetClientScheme implements SchemeNetworkClient {
       paymasterEndpoint: string;
     }
   > {
-    const starknetRequirements = toStarknetRequirements(requirements);
-    const network = starknetRequirements.network;
+    const canonicalNetwork = toStarknetCanonicalCaip(requirements.network);
+    if (!canonicalNetwork) {
+      throw new Error(`Unsupported Starknet network: ${requirements.network}`);
+    }
+
+    const legacyNetwork = toStarknetLegacyCaip(canonicalNetwork);
+    if (!legacyNetwork) {
+      throw new Error(`Unsupported Starknet network: ${requirements.network}`);
+    }
+
+    const starknetRequirements = toStarknetRequirements(
+      requirements,
+      legacyNetwork
+    );
+    const network = legacyNetwork;
     const paymasterEndpoint = resolvePaymasterEndpoint(
-      network,
+      canonicalNetwork,
       this.paymasterEndpoint
     );
     const paymasterApiKey = resolvePaymasterApiKey(
-      network,
+      canonicalNetwork,
       this.paymasterApiKey
     );
 

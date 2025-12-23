@@ -45,8 +45,8 @@ The x402 Facilitator acts as a trusted intermediary between clients making payme
 | Optimism       | `eip155:10`                               | exact, upto |
 | Arbitrum       | `eip155:42161`                            | exact, upto |
 | Polygon        | `eip155:137`                              | exact, upto |
-| Starknet Mainnet | `starknet:mainnet`                      | exact       |
-| Starknet Sepolia | `starknet:sepolia`                      | exact       |
+| Starknet Mainnet | `starknet:SN_MAIN`                      | exact       |
+| Starknet Sepolia | `starknet:SN_SEPOLIA`                   | exact       |
 | Solana Devnet  | `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1` | exact       |
 | Solana Mainnet | `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp` | exact       |
 
@@ -274,8 +274,8 @@ The facilitator uses a simplified network configuration system. Instead of manua
 
 | Name               | CAIP-2             |
 | ------------------ | ------------------ |
-| `starknet-mainnet` | `starknet:mainnet` |
-| `starknet-sepolia` | `starknet:sepolia` |
+| `starknet-mainnet` | `starknet:SN_MAIN` |
+| `starknet-sepolia` | `starknet:SN_SEPOLIA` |
 
 **Supported SVM Networks**
 

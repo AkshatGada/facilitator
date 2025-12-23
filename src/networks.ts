@@ -38,8 +38,8 @@ export interface SvmNetworkConfig {
 }
 
 export interface StarknetNetworkConfig {
-  /** CAIP-2 identifier (e.g., "starknet:mainnet") */
-  caip: `starknet:${string}`;
+  /** CAIP-2 identifier (e.g., "starknet:SN_MAIN") */
+  caip: StarknetCaipId;
   /** Alchemy subdomain (e.g., "starknet-mainnet.g.alchemy.com/v2") */
   alchemy?: string;
   /** Public RPC fallback URL */
@@ -49,6 +49,31 @@ export interface StarknetNetworkConfig {
 export type EvmNetworkName = keyof typeof EVM_NETWORKS;
 export type SvmNetworkName = keyof typeof SVM_NETWORKS;
 export type StarknetNetworkName = keyof typeof STARKNET_NETWORKS;
+
+export const STARKNET_CAIP_IDS = {
+  MAINNET: "starknet:SN_MAIN",
+  SEPOLIA: "starknet:SN_SEPOLIA",
+} as const;
+
+export type StarknetCaipId =
+  (typeof STARKNET_CAIP_IDS)[keyof typeof STARKNET_CAIP_IDS];
+export type StarknetLegacyCaipId = "starknet:mainnet" | "starknet:sepolia";
+
+const STARKNET_LEGACY_BY_CANONICAL: Record<
+  StarknetCaipId,
+  StarknetLegacyCaipId
+> = {
+  "starknet:SN_MAIN": "starknet:mainnet",
+  "starknet:SN_SEPOLIA": "starknet:sepolia",
+};
+
+const STARKNET_CANONICAL_BY_LEGACY: Record<
+  StarknetLegacyCaipId,
+  StarknetCaipId
+> = {
+  "starknet:mainnet": "starknet:SN_MAIN",
+  "starknet:sepolia": "starknet:SN_SEPOLIA",
+};
 
 /** @deprecated Use EvmNetworkConfig instead */
 export type NetworkConfig = EvmNetworkConfig;
@@ -172,12 +197,12 @@ export const EVM_NETWORKS = {
 
 export const STARKNET_NETWORKS = {
   "starknet-mainnet": {
-    caip: "starknet:mainnet",
+    caip: STARKNET_CAIP_IDS.MAINNET,
     alchemy: "starknet-mainnet.g.alchemy.com/v2",
     public: "https://starknet-mainnet.public.blastapi.io",
   },
   "starknet-sepolia": {
-    caip: "starknet:sepolia",
+    caip: STARKNET_CAIP_IDS.SEPOLIA,
     alchemy: "starknet-sepolia.g.alchemy.com/v2",
     public: "https://starknet-sepolia.public.blastapi.io",
   },
@@ -284,6 +309,36 @@ export function resolveRpcUrl(
 // ============================================================================
 
 /**
+ * Normalize a Starknet CAIP identifier to the canonical (SN_*) form.
+ */
+export function toStarknetCanonicalCaip(
+  caip: string
+): StarknetCaipId | undefined {
+  if (caip in STARKNET_LEGACY_BY_CANONICAL) {
+    return caip as StarknetCaipId;
+  }
+  if (caip in STARKNET_CANONICAL_BY_LEGACY) {
+    return STARKNET_CANONICAL_BY_LEGACY[caip as StarknetLegacyCaipId];
+  }
+  return undefined;
+}
+
+/**
+ * Normalize a Starknet CAIP identifier to the legacy (lowercase) form.
+ */
+export function toStarknetLegacyCaip(
+  caip: string
+): StarknetLegacyCaipId | undefined {
+  if (caip in STARKNET_CANONICAL_BY_LEGACY) {
+    return caip as StarknetLegacyCaipId;
+  }
+  if (caip in STARKNET_LEGACY_BY_CANONICAL) {
+    return STARKNET_LEGACY_BY_CANONICAL[caip as StarknetCaipId];
+  }
+  return undefined;
+}
+
+/**
  * Get Starknet network config by name
  */
 export function getStarknetNetwork(
@@ -295,7 +350,9 @@ export function getStarknetNetwork(
 /**
  * Get CAIP-2 identifier for a Starknet network
  */
-export function getStarknetNetworkCaip(name: string): string | undefined {
+export function getStarknetNetworkCaip(
+  name: string
+): StarknetCaipId | undefined {
   return getStarknetNetwork(name)?.caip;
 }
 

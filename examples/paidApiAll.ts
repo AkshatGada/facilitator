@@ -21,7 +21,7 @@
  *   - EVM_PRIVATE_KEY: EVM signer private key (required)
  *   - SVM_PRIVATE_KEY: Solana signer private key (required)
  *   - STARKNET_PAY_TO: Recipient address for Starknet payments (required)
- *   - STARKNET_NETWORK: starknet:mainnet | starknet:sepolia (default: starknet:sepolia)
+ *   - STARKNET_NETWORK: starknet:SN_MAIN | starknet:SN_SEPOLIA (default: starknet:SN_SEPOLIA)
  *   - STARKNET_PRICE: ETH amount for Starknet payment (default: 0.0001)
  *
  * Endpoints:
@@ -31,15 +31,18 @@
 import { Elysia } from "elysia";
 import { node } from "@elysiajs/node";
 import { HTTPFacilitatorClient } from "@x402/core/http";
-import {
-  buildETHPayment,
-  validateNetwork,
-  type StarknetNetworkId,
-} from "x402-starknet";
+import { buildETHPayment } from "x402-starknet";
 
 import { createPaywall, evmPaywall, svmPaywall } from "@x402/paywall";
 
 import { createElysiaPaidRoutes } from "../src/elysia/index.js";
+import {
+  STARKNET_CAIP_IDS,
+  toStarknetCanonicalCaip,
+  toStarknetLegacyCaip,
+  type StarknetCaipId,
+  type StarknetLegacyCaipId,
+} from "../src/networks.js";
 import {
   createPrivateKeyEvmSigner,
   createPrivateKeySvmSigner,
@@ -53,15 +56,20 @@ import { getRpcUrl } from "../src/config.js";
 
 const PORT = Number(process.env.PORT ?? 4025);
 const FACILITATOR_URL = process.env.FACILITATOR_URL ?? "http://localhost:8090";
-const STARKNET_NETWORK = validateNetwork(
-  process.env.STARKNET_NETWORK ?? "starknet:sepolia"
-) as StarknetNetworkId;
+const STARKNET_NETWORK = toStarknetCanonicalCaip(
+  process.env.STARKNET_NETWORK ?? STARKNET_CAIP_IDS.SEPOLIA
+) as StarknetCaipId | undefined;
+const STARKNET_LEGACY_NETWORK = STARKNET_NETWORK
+  ? (toStarknetLegacyCaip(STARKNET_NETWORK) as
+      | StarknetLegacyCaipId
+      | undefined)
+  : undefined;
 const STARKNET_PAY_TO = process.env.STARKNET_PAY_TO;
 const STARKNET_PRICE = Number(process.env.STARKNET_PRICE ?? "0.0001");
 
-if (!STARKNET_PAY_TO) {
+if (!STARKNET_PAY_TO || !STARKNET_NETWORK || !STARKNET_LEGACY_NETWORK) {
   // eslint-disable-next-line no-console
-  console.error("Set STARKNET_PAY_TO to run the multi-chain API example.");
+  console.error("Set STARKNET_PAY_TO and STARKNET_NETWORK to run this example.");
   process.exit(1);
 }
 
@@ -87,7 +95,7 @@ const paywallProvider = createPaywall()
   .build();
 
 const starknetRequirements = buildETHPayment({
-  network: STARKNET_NETWORK,
+  network: STARKNET_LEGACY_NETWORK,
   amount: STARKNET_PRICE,
   payTo: STARKNET_PAY_TO,
   maxTimeoutSeconds: 120,

@@ -15,7 +15,7 @@
  * Environment variables:
  *   - PORT: Server port (default: 4024)
  *   - FACILITATOR_URL: Facilitator URL (default: http://localhost:8090)
- *   - STARKNET_NETWORK: starknet:mainnet | starknet:sepolia (default: starknet:sepolia)
+ *   - STARKNET_NETWORK: starknet:SN_MAIN | starknet:SN_SEPOLIA (default: starknet:SN_SEPOLIA)
  *   - STARKNET_PAY_TO: Recipient address for payments (required)
  *   - STARKNET_PRICE: ETH amount for this endpoint (default: 0.0001)
  *
@@ -26,16 +26,16 @@
 import { Elysia } from "elysia";
 import { node } from "@elysiajs/node";
 import { HTTPFacilitatorClient } from "@x402/core/http";
-import {
-  buildETHPayment,
-  validateNetwork,
-  type StarknetNetworkId,
-} from "x402-starknet";
+import { buildETHPayment } from "x402-starknet";
 
 import { createPaywall, evmPaywall } from "@x402/paywall";
 
 import { createElysiaPaidRoutes } from "../src/elysia/index.js";
 import { createResourceServer } from "../src/server.js";
+import {
+  toStarknetCanonicalCaip,
+  toStarknetLegacyCaip,
+} from "../src/networks.js";
 
 // ============================================================================
 // Configuration
@@ -43,13 +43,14 @@ import { createResourceServer } from "../src/server.js";
 
 const PORT = Number(process.env.PORT ?? 4024);
 const FACILITATOR_URL = process.env.FACILITATOR_URL ?? "http://localhost:8090";
-const NETWORK = validateNetwork(
-  process.env.STARKNET_NETWORK ?? "starknet:sepolia"
-) as StarknetNetworkId;
+const NETWORK = toStarknetCanonicalCaip(
+  process.env.STARKNET_NETWORK ?? "starknet:SN_SEPOLIA"
+);
+const LEGACY_NETWORK = NETWORK ? toStarknetLegacyCaip(NETWORK) : undefined;
 const PAY_TO = process.env.STARKNET_PAY_TO;
 const PRICE = Number(process.env.STARKNET_PRICE ?? "0.0001");
 
-if (!PAY_TO) {
+if (!PAY_TO || !NETWORK || !LEGACY_NETWORK) {
   console.error("Set STARKNET_PAY_TO to run Starknet API example.");
   process.exit(1);
 }
@@ -62,12 +63,10 @@ const facilitatorClient = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
 const resourceServer = createResourceServer(facilitatorClient);
 
 // Paywall provider for browser-based payment UI
-const paywallProvider = createPaywall()
-  .withNetwork(evmPaywall)
-  .build();
+const paywallProvider = createPaywall().withNetwork(evmPaywall).build();
 
 const paymentRequirements = buildETHPayment({
-  network: NETWORK,
+  network: LEGACY_NETWORK,
   amount: PRICE,
   payTo: PAY_TO,
   maxTimeoutSeconds: 120,
@@ -90,7 +89,7 @@ createElysiaPaidRoutes(app, {
     paywallProvider,
     paywallConfig: {
       appName: "Starknet Paid API",
-      testnet: NETWORK.includes("sepolia"),
+      testnet: NETWORK === "starknet:SN_SEPOLIA",
     },
   },
 }).get("/starknet-premium", () => ({ message: "premium starknet content" }), {

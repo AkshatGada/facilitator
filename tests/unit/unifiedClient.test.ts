@@ -99,7 +99,7 @@ describe("Unified client", () => {
   });
 
   it("requires typedData for Starknet payments", async () => {
-    const paymentRequired = createPaymentRequired("starknet:sepolia");
+    const paymentRequired = createPaymentRequired("starknet:SN_SEPOLIA");
     const header = encodePaymentRequiredHeader(paymentRequired);
     const payload = createPaymentPayload(paymentRequired.accepts[0]!);
 

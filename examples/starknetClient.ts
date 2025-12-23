@@ -21,7 +21,7 @@
  *   - STARKNET_ACCOUNT_ADDRESS: Payer account address (required)
  *   - STARKNET_ACCOUNT_PRIVATE_KEY: Payer private key (required)
  *   - STARKNET_RPC_URL: Optional Starknet RPC URL override
- *   - STARKNET_NETWORK: starknet:mainnet | starknet:sepolia (default: starknet:sepolia)
+ *   - STARKNET_NETWORK: starknet:SN_MAIN | starknet:SN_SEPOLIA (default: starknet:SN_SEPOLIA)
  *   - STARKNET_PAYMASTER_ENDPOINT: Optional paymaster endpoint override (default: AVNU)
  *   - STARKNET_PAYMASTER_API_KEY: Optional paymaster API key for build calls
  *
@@ -34,11 +34,16 @@ import {
   createProvider,
   decodePaymentResponse,
   HTTP_HEADERS,
-  validateNetwork,
-  type StarknetNetworkId,
 } from "x402-starknet";
 
 import { createUnifiedClient } from "../src/unifiedClient.js";
+import {
+  STARKNET_CAIP_IDS,
+  toStarknetCanonicalCaip,
+  toStarknetLegacyCaip,
+  type StarknetCaipId,
+  type StarknetLegacyCaipId,
+} from "../src/networks.js";
 
 // ============================================================================
 // Configuration
@@ -52,14 +57,24 @@ const STARKNET_PAYMASTER_API_KEY = process.env.STARKNET_PAYMASTER_API_KEY;
 const STARKNET_PAYMASTER_ENDPOINT =
   process.env.STARKNET_PAYMASTER_ENDPOINT ??
   "https://starknet.paymaster.avnu.fi";
-const PREFERRED_NETWORK = validateNetwork(
-  process.env.STARKNET_NETWORK ?? "starknet:sepolia"
-) as StarknetNetworkId;
+const PREFERRED_NETWORK = toStarknetCanonicalCaip(
+  process.env.STARKNET_NETWORK ?? STARKNET_CAIP_IDS.SEPOLIA
+) as StarknetCaipId | undefined;
+const LEGACY_NETWORK = PREFERRED_NETWORK
+  ? (toStarknetLegacyCaip(PREFERRED_NETWORK) as
+      | StarknetLegacyCaipId
+      | undefined)
+  : undefined;
 
-if (!STARKNET_ACCOUNT_ADDRESS || !STARKNET_ACCOUNT_PRIVATE_KEY) {
+if (
+  !STARKNET_ACCOUNT_ADDRESS ||
+  !STARKNET_ACCOUNT_PRIVATE_KEY ||
+  !PREFERRED_NETWORK ||
+  !LEGACY_NETWORK
+) {
   // eslint-disable-next-line no-console
   console.error(
-    "Set STARKNET_ACCOUNT_ADDRESS and STARKNET_ACCOUNT_PRIVATE_KEY to run."
+    "Set STARKNET_ACCOUNT_ADDRESS, STARKNET_ACCOUNT_PRIVATE_KEY, and STARKNET_NETWORK to run."
   );
   process.exit(1);
 }
@@ -71,7 +86,7 @@ const PATH = "/api/starknet-premium";
 // ============================================================================
 
 const provider = createProvider({
-  network: PREFERRED_NETWORK,
+  network: LEGACY_NETWORK,
   ...(STARKNET_RPC_URL ? { rpcUrl: STARKNET_RPC_URL } : {}),
 });
 

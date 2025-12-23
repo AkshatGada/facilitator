@@ -5,14 +5,14 @@ import type { StarknetConfig } from "../../src/starknet/exact/facilitator.js";
 describe("Starknet smoke test", () => {
   it("registers mainnet + sepolia with supported metadata", () => {
     const mainnetConfig: StarknetConfig = {
-      network: "starknet:mainnet",
+      network: "starknet:SN_MAIN",
       rpcUrl: "https://starknet-mainnet.example.com",
       paymasterEndpoint: "https://starknet.paymaster.avnu.fi",
       sponsorAddress: "0xmainnet-sponsor",
     };
 
     const sepoliaConfig: StarknetConfig = {
-      network: "starknet:sepolia",
+      network: "starknet:SN_SEPOLIA",
       rpcUrl: "https://starknet-sepolia.example.com",
       paymasterEndpoint: "http://localhost:12777",
       sponsorAddress: "0xsepolia-sponsor",

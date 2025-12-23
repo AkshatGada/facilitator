@@ -42,15 +42,13 @@ declare module "hono" {
 
 function createAdapter(
   c: Context,
-  paymentHeaderAliases: string[]
+  paymentHeaderAliases: string[],
+  cachedBody: unknown
 ): HTTPAdapter {
   const request = c.req.raw;
   const url = resolveUrl(request.url);
   const adapterPath = c.req.path || url.pathname;
   const queryParams = parseQueryParams(url);
-
-  let cachedBody: unknown = undefined;
-  let bodyParsed = false;
 
   return {
     getHeader: (name) =>
@@ -66,17 +64,7 @@ function createAdapter(
     getUserAgent: () => request.headers.get("user-agent") ?? "",
     getQueryParams: () => queryParams,
     getQueryParam: (name) => queryParams[name],
-    getBody: () => {
-      if (!bodyParsed) {
-        try {
-          cachedBody = c.req.parseBody();
-        } catch {
-          cachedBody = undefined;
-        }
-        bodyParsed = true;
-      }
-      return cachedBody;
-    },
+    getBody: () => cachedBody,
   };
 }
 
@@ -113,7 +101,14 @@ export function createHonoPaymentMiddleware(
 
     c.set("x402", null);
 
-    const adapter = createAdapter(c, paymentHeaderAliases);
+    let cachedBody: unknown = undefined;
+    try {
+      cachedBody = await c.req.parseBody();
+    } catch {
+      cachedBody = undefined;
+    }
+
+    const adapter = createAdapter(c, paymentHeaderAliases, cachedBody);
     const paywallConfig = await resolvePaywallConfig(config.paywallConfig, {
       request: c.req.raw,
     });

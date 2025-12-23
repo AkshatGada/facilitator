@@ -11,6 +11,8 @@ import {
   getSvmNetworkCaip,
   getStarknetNetworkCaip,
   supportsV1,
+  STARKNET_CAIP_IDS,
+  toStarknetCanonicalCaip,
 } from "./networks.js";
 
 dotenv.config();
@@ -170,7 +172,9 @@ function getStarknetPaymasterEndpoint(network: string): string | undefined {
   const caip = getStarknetNetworkCaip(network);
   if (!caip) return undefined;
 
-  return caip === "starknet:mainnet"
+  const canonicalCaip = caip ? toStarknetCanonicalCaip(caip) : undefined;
+
+  return canonicalCaip === STARKNET_CAIP_IDS.MAINNET
     ? "https://starknet.paymaster.avnu.fi"
     : "http://localhost:12777";
 }
