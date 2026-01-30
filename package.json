@@ -75,7 +75,9 @@
     "benchmark": "tsx benchmarks/benchmark.ts",
     "benchmark:setup": "tsx benchmarks/setup/setup-wallets.ts",
     "benchmark:balances": "tsx benchmarks/setup/check-balances.ts",
-    "benchmark:api": "tsx benchmarks/comparison-api-server.ts"
+    "benchmark:api": "tsx benchmarks/comparison-api-server.ts",
+    "upto-demo:batch": "tsx benchmarks/upto-demo/test-upto-batch.ts",
+    "upto-demo:simple": "tsx benchmarks/upto-demo/test-upto-simple.ts"
   },
   "keywords": [
     "x402",

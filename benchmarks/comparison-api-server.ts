@@ -55,44 +55,11 @@ export const app = new Elysia({
   prefix: "/api",
   name: "comparison-api",
   adapter: node(),
-});
+})
+  // Attach sweeper for upto scheme
+  .use(upto.createSweeper());
 
-// Exact scheme endpoint
-createElysiaPaidRoutes(app, {
-  basePath: "/api",
-  middleware: {
-    resourceServer,
-    autoSettle: true,
-  },
-}).get(
-  "/benchmark-exact",
-  () => ({
-    scheme: "exact",
-    message: "Exact scheme - immediate settlement",
-    timestamp: Date.now(),
-  }),
-  {
-    payment: {
-      accepts: {
-        scheme: "exact",
-        network: "eip155:137",
-        payTo: evmAddress,
-        price: {
-          amount: "1000", // 0.001 USDC (6 decimals)
-          asset: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", // USDC on Polygon
-          extra: {
-            name: "USD Coin",
-            version: "2",
-          },
-        },
-      },
-      description: "Exact scheme endpoint",
-      mimeType: "application/json",
-    },
-  }
-);
-
-// Upto scheme endpoint
+// Create paid routes for both exact and upto schemes
 createElysiaPaidRoutes(app, {
   basePath: "/api",
   middleware: {
@@ -100,33 +67,62 @@ createElysiaPaidRoutes(app, {
     upto,
     autoSettle: true,
   },
-}).get(
-  "/benchmark-upto",
-  () => ({
-    scheme: "upto",
-    message: "Upto scheme - batched settlement",
-    timestamp: Date.now(),
-  }),
-  {
-    payment: {
-      accepts: {
-        scheme: "upto",
-        network: "eip155:137",
-        payTo: evmAddress,
-        price: {
-          amount: "1000", // 0.001 USDC (6 decimals)
-          asset: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", // USDC on Polygon
-          extra: {
-            name: "USD Coin",
-            version: "2",
+})
+  .get(
+    "/benchmark-exact",
+    () => ({
+      scheme: "exact",
+      message: "Exact scheme - immediate settlement",
+      timestamp: Date.now(),
+    }),
+    {
+      payment: {
+        accepts: {
+          scheme: "exact",
+          network: "eip155:137",
+          payTo: evmAddress,
+          price: {
+            amount: "1000", // 0.001 USDC (6 decimals)
+            asset: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", // USDC on Polygon
+            extra: {
+              name: "USD Coin",
+              version: "2",
+            },
           },
         },
+        description: "Exact scheme endpoint",
+        mimeType: "application/json",
       },
-      description: "Upto scheme endpoint",
-      mimeType: "application/json",
-    },
-  }
-);
+    }
+  )
+  .get(
+    "/benchmark-upto",
+    () => ({
+      scheme: "upto",
+      message: "Upto scheme - batched settlement",
+      timestamp: Date.now(),
+    }),
+    {
+      payment: {
+        accepts: {
+          scheme: "upto",
+          network: "eip155:137",
+          payTo: evmAddress,
+          price: {
+            amount: "1000", // 0.001 USDC (6 decimals)
+            asset: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", // USDC on Polygon
+            extra: {
+              name: "USD Coin",
+              version: "2",
+              maxAmountRequired: "5000", // $0.005 USDC cap
+            },
+          },
+        },
+        description: "Upto scheme endpoint",
+        mimeType: "application/json",
+      },
+    }
+  );
 
 // Health check
 app.get("/health", () => ({ status: "ok" }));
